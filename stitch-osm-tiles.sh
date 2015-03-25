@@ -69,15 +69,206 @@
 
 trap "exit" INT
 
-if [[ $# -ne 1 ]]; then
-	echo "Please provide the zoom level that you want stitched from the script."
-	exit 1
-fi
-
 # The horizontal or vertical resolution of the final tiles should not exceed that of the $max_resolution_px variable
 max_resolution_px=20000
+osm_server=${OSM_SERVER:-0}
 
-zoom_level=$1
+function usage {
+  echo ""
+  echo "Usage: $(basename $0) -z ZOOM [OPTION]..."
+  echo "Script to stitch OpenStreetMap tiles in a single (or multiple) larger"
+  echo "ones for printouts or use in programs such as OziExplorer."
+  echo ""
+  echo " -z|--zoom-level ZOOM           Valid ZOOM values: 0-18"
+  echo ""
+  exit 0
+}
+
+######################################################################################
+# Define functions to get tiles from longitude/latitude and vice versa
+# http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Coordinates_to_tile_numbers_2
+#
+# The latitude cannot be more than 85 degrees (as I see the official OSM site, do not
+# offer more than 85 degrees anyway):
+# https://help.openstreetmap.org/questions/37743/tile-coordinates-from-latlonzoom-formula-problem
+#
+xtile2long()
+{
+ xtile=$1
+ zoom=$2
+ echo "${xtile} ${zoom}" | awk '{printf("%.9f", $1 / 2.0^$2 * 360.0 - 180)}'
+} 
+ 
+long2xtile()  
+{ 
+ long=$1
+ zoom=$2
+ echo "${long} ${zoom}" | awk '{ xtile = ($1 + 180.0) / 360 * 2.0^$2; 
+  xtile+=xtile<0?-0.5:0.5;
+  printf("%d", xtile ) }'
+}
+ 
+ytile2lat()
+{
+ ytile=$1;
+ zoom=$2;
+ tms=$3;
+ if [ ! -z "${tms}" ]
+ then
+ #  from tms_numbering into osm_numbering
+  ytile=`echo "${ytile}" ${zoom} | awk '{printf("%d\n",((2.0^$2)-1)-$1)}'`;
+ fi
+ lat=`echo "${ytile} ${zoom}" | awk -v PI=3.14159265358979323846 '{ 
+       num_tiles = PI - 2.0 * PI * $1 / 2.0^$2;
+       printf("%.9f", 180.0 / PI * atan2(0.5 * (exp(num_tiles) - exp(-num_tiles)),1)); }'`;
+ echo "${lat}";
+}
+ 
+lat2ytile() 
+{ 
+ lat=$1;
+ zoom=$2;
+ tms=$3;
+ ytile=`echo "${lat} ${zoom}" | awk -v PI=3.14159265358979323846 '{ 
+   tan_x=sin($1 * PI / 180.0)/cos($1 * PI / 180.0);
+   ytile = (1 - log(tan_x + 1/cos($1 * PI/ 180))/PI)/2 * 2.0^$2; 
+   ytile+=ytile<0?-0.5:0.5;
+   printf("%d", ytile ) }'`;
+ if [ ! -z "${tms}" ]
+ then
+  #  from oms_numbering into tms_numbering
+  ytile=`echo "${ytile}" ${zoom} | awk '{printf("%d\n",((2.0^$2)-1)-$1)}'`;
+ fi
+ echo "${ytile}";
+}
+######################################################################################
+
+E_BADARGS=65
+
+download_tiles=0
+lon1=
+lon2=
+lat1=
+lat2=
+zoom_level=
+
+args=$(getopt --options z:w:e:n:s:ho: --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,osm-server: -- "$@")
+
+#if [ "$(echo "$args" | $EGREP "(^|'[[:space:]]')-z[[:space:]]")" == "" ]; then
+#       echo "\nParameter \"-z (--zoom-level)\" is mandatory.."
+#       usage
+#       exit 1
+#fi
+
+eval set -- "$args"
+
+for i
+do
+   case "$i" in
+	-z|--zoom-level) shift
+	   zoom_level=$1
+	   if [[ ! "$zoom_level" =~ ^-?[0-9]+$ || $zoom_level -lt 0 || $zoom_level -gt 18 ]]; then
+		echo "Zoom level values should be between 0-18"
+		exit $E_BADARGS
+	   fi
+	   shift
+	   ;;  
+	-w|--lon1) shift
+	   lon1=$1
+	   download_tiles=1
+	   shift
+	   #echo "Longitude west was set to $lon1"
+	   ;;  
+	-e|--lon2) shift
+	   lon2=$1
+	   download_tiles=1
+	   shift
+	   #echo "Longitude east was set to $lon2"
+	   ;;  
+	-n|--lat1) shift
+	   lat1=$1
+	   download_tiles=1
+	   shift
+	   #echo "Latitude north was set to $lat1"
+	   ;;  
+	-s|--lat2) shift
+	   lat2=$1
+	   download_tiles=1
+	   shift
+	   #echo "Latitude south was set to $lat2"
+	   ;;
+	-o|--osm-server) shift
+	   osm_server="$1"
+	   shift
+	   ;;
+	-h|--help) shift
+	   usage
+	   ;;
+   esac
+done
+
+if [[ -z $zoom_level ]]; then
+	echo "Please provide the OpenStreetMap zoom level with the '-z' option."
+	exit $E_BADARGS
+fi
+
+# TODO: Check if osm_server is defined, before start the download of tiles.
+#       Make more sanity checks for the command line parameters (for example, no number greater than 85 should be used for the latitudes).
+#       Make wget multithreaded by putting a limited number of wget instances in the background (now it has unlimited concurrency which is probably not a good idea).
+#       Make checks (identify) of the downloaded files. If a file is already downloaded and not corrupt, do not re-download.
+#       Update the readme at the top of this file and the README.md file.
+#       Implement automatic calibration for OziExplorer.
+#       Make subroutines for the stitching functionality?
+
+if [[ $download_tiles -eq 1 ]]; then
+   if [[ -z $lon1 || -z $lon2 || -z $lat1 || -z $lat2 ]]; then
+	echo "If you provide coordinates for tile downloading, you need to provide all 4 coordinates:"
+	echo "   West (longitude 1)"
+	echo "   East (longitude 2)"
+	echo "   North (latitude 1)"
+	echo "   South (latitude 2)"
+	exit $E_BADARGS
+   fi
+   
+   tile_west=$(long2xtile $lon1 $zoom_level)
+   tile_east=$(long2xtile $lon2 $zoom_level)
+   tile_north=$(lat2ytile  $lat1 $zoom_level)
+   tile_south=$(lat2ytile  $lat2 $zoom_level)
+   
+   if [[ $tile_west -gt $tile_east ]]; then
+	temp=$tile_west
+	tile_west=$tile_east
+	tile_east=$temp
+   fi
+   
+   if [[ $tile_north -gt $tile_south ]]; then
+	temp=$tile_south
+	tile_south=$tile_north
+	tile_north=$temp
+   fi
+#    echo $tile_west $tile_east
+#    echo $tile_north $tile_south
+   
+   total_tiles_to_download=$(( (($tile_east - $tile_west) + 1) * (( $tile_south - $tile_north ) + 1) ))
+   downloading_now=0
+   for (( lon=$tile_west; lon<=$tile_east; lon++)); do
+	mkdir -p mkdir "$zoom_level/$lon"
+	for (( lat=$tile_north; lat<=$tile_south; lat++)); do
+	   (( ++downloading_now ))
+	   echo "Downloading tile $downloading_now/$total_tiles_to_download.."
+	   wget "$osm_server/$zoom_level/$lon/$lat.png" -O "$zoom_level/$lon/$lat.png" -o /dev/null &
+	done
+   done
+   #count=0
+   #while [[ count -lt 12 ]]; do
+   #       if [[ $(jobs | wc -l) -lt 5 ]]; then
+   #               echo Sleeping "$count" 
+   #               (sleep $count) &
+   #               ((count++))
+   #       fi
+   #done
+   #wait
+fi
 
 if [[ -d "$zoom_level" ]]; then
    stitches_folder="$(pwd)/stitches/$zoom_level"
@@ -99,6 +290,8 @@ else
    echo "Zoom level folder '$zoom_level' does not exist."
    exit 1
 fi
+
+######################################################################################
 
 files_per_folder=
 filenames_in_folder=()
