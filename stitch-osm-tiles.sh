@@ -19,6 +19,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Prerequisites:
+#   Bash4 is needed, because I use associative arrays in order to parallelize the download of tiles.
+#   If you use a recent distro, that shouldn't be a problem.
+#
 #   apt-get install graphicsmagick imagemagick
 #      The 'identify' utility of the imagemagick library is much much faster, but graphicsmagick library's montage and crop operations that are used by this script, are much faster.
 #      That's why I use both libraries.
@@ -71,7 +74,17 @@ trap "exit" INT
 
 # The horizontal or vertical resolution of the final tiles should not exceed that of the $max_resolution_px variable
 max_resolution_px=20000
-osm_server=${OSM_SERVER:-0}
+# MapQuest tile servers:
+#   http://otile1.mqcdn.com/tiles/1.0.0/osm
+#   http://otile2.mqcdn.com/tiles/1.0.0/osm
+#   http://otile3.mqcdn.com/tiles/1.0.0/osm
+#   http://otile4.mqcdn.com/tiles/1.0.0/osm
+osm_server=${OSM_SERVER:-}
+# Available MAPQUEST Overlays:
+#   osm: OpenStreetMap (available zoom levels 0-18)
+#   sat: Satellite (available zoom levels 0-11)
+overlay=${OSM_MAPQUEST_OVERLAY:-osm}
+osm_mapquest_servers=( "http://otile1.mqcdn.com/tiles/1.0.0/osm" "http://otile2.mqcdn.com/tiles/1.0.0/osm" "http://otile3.mqcdn.com/tiles/1.0.0/osm" "http://otile4.mqcdn.com/tiles/1.0.0/osm" )
 
 function usage {
   echo ""
@@ -79,7 +92,29 @@ function usage {
   echo "Script to stitch OpenStreetMap tiles in a single (or multiple) larger"
   echo "ones for printouts or use in programs such as OziExplorer."
   echo ""
+  echo "If only the zoom level is given as a parameter, the script will look for the specified"
+  echo "zoom folder and try to stitch any OSM tiles. If more options are utilized, the script"
+  echo "can be used to download tiles defined by a bounding box and then stitch them if -p"
+  echo "option is not used."
+  echo ""
   echo " -z|--zoom-level ZOOM           Valid ZOOM values: 0-18"
+  echo " -o|--osm-server OSM_SERVER     The URL of your tile server. If this option is"
+  echo "                                  not set, mapquest tile servers will be used."
+  echo "                                  This option can also be set as an OSM_SERVER"
+  echo "                                  environment variable OSM_SERVER."
+  echo " -w|--lon1 W_DEGREES            Set the western (W) longtitude of a bounding box for"
+  echo "                                  tile downloading. -e, -n and -s should also be set."
+  echo " -e|--lon2 E_DEGREES            Set the eastern (E) longtitude of a bounding box for"
+  echo "                                  tile downloading. -w, -n and -s should also be set."
+  echo " -n|--lat1 N_DEGREES            Set the northern (N) latitude of a bounding box for"
+  echo "                                  tile downloading. -w, -e and -s should also be set."
+  echo " -s|--lat2 S_DEGREES            Set the southern (S) latitude of a bounding box for"
+  echo "                                  tile downloading. -w, -e, and -n should also be set."
+  echo " -p|--skip-stitching            This option can be used together with the -w, -e, -n"
+  echo "                                  and -s options, in order to just download tiles, but"
+  echo "                                  not stitch them together. The stitching can always"
+  echo "                                  done later."
+  echo " -h|--help                      Prints this help message."
   echo ""
   exit 0
 }
@@ -88,9 +123,12 @@ function usage {
 # Define functions to get tiles from longitude/latitude and vice versa
 # http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Coordinates_to_tile_numbers_2
 #
-# The latitude cannot be more than 85 degrees (as I see the official OSM site, do not
-# offer more than 85 degrees anyway):
-# https://help.openstreetmap.org/questions/37743/tile-coordinates-from-latlonzoom-formula-problem
+#   X and Y
+#      X goes from 0 (left edge is 180 °W) to 2zoom − 1 (right edge is 180 °E)
+#      Y goes from 0 (top edge is 85.0511 °N) to 2zoom − 1 (bottom edge is 85.0511 °S) in a Mercator projection
+#   For the curious, the number 85.0511 is the result of arctan(sinh(π)). By using this bound, the entire map becomes a (very large) square.
+#
+#   https://help.openstreetmap.org/questions/37743/tile-coordinates-from-latlonzoom-formula-problem
 #
 xtile2long()
 {
@@ -133,7 +171,7 @@ lat2ytile()
    tan_x=sin($1 * PI / 180.0)/cos($1 * PI / 180.0);
    ytile = (1 - log(tan_x + 1/cos($1 * PI/ 180))/PI)/2 * 2.0^$2; 
    ytile+=ytile<0?-0.5:0.5;
-   printf("%d", ytile ) }'`;
+   printf("%d", ytile ) }'`; 
  if [ ! -z "${tms}" ]
  then
   #  from oms_numbering into tms_numbering
@@ -143,6 +181,49 @@ lat2ytile()
 }
 ######################################################################################
 
+check_if_valid_number() {
+   integer_comparizon="$2"
+   if [[ ! -z "$integer_comparizon" ]]; then
+      re='^-?[0-9]+$'
+      message="is not a valid integer number."
+   else
+      re='^-?[0-9]+([.][0-9]+)?$'
+      message="is not a valid number."
+   fi
+   
+   if ! [[ $1 =~ $re ]]; then >&2 echo "$1 ""$message"; return $E_BADARGS; fi
+}
+
+compare_nums()
+{
+   # Function to compare two numbers (float or integers) by using awk.
+   # The function will nor print anything, but it will return 0 (if the comparison is true) or 1
+   # (if the comparison is false) exit codes, so it can be used directly in shell one liners.
+   #############
+   ### Usage ###
+   ### Note that you have to enclose the comparison operator in quotes.
+   #############
+   # compare_nums 1 ">" 2 # returns false
+   # compare_nums 1.23 "<=" 2 # returns true
+   # compare_nums -1.238 "<=" -2 # returns false
+   #############################################
+   num1=$1
+   op=$2
+   num2=$3
+   E_BADARGS=65
+   
+   # Make sure that the provided numbers are actually numbers.
+   check_if_valid_number $num1 || return $E_BADARGS
+   check_if_valid_number $num2 || return $E_BADARGS
+   
+   # If you want to print the exit code as well (instead of only returning it), uncomment
+   # the awk line below and comment the uncommented one which is two lines below.
+   #awk 'BEGIN {print return_code=('$num1' '$op' '$num2') ? 0 : 1; exit} END {exit return_code}'
+   awk 'BEGIN {return_code=('$num1' '$op' '$num2') ? 0 : 1; exit} END {exit return_code}'
+   return_code=$?
+   return $return_code
+}
+
 E_BADARGS=65
 
 download_tiles=0
@@ -151,8 +232,9 @@ lon2=
 lat1=
 lat2=
 zoom_level=
+skip_stitching=0
 
-args=$(getopt --options z:w:e:n:s:ho: --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,osm-server: -- "$@")
+args=$(getopt --options z:w:e:n:s:ho:p --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,osm-server:,skip-stitching -- "$@")
 
 #if [ "$(echo "$args" | $EGREP "(^|'[[:space:]]')-z[[:space:]]")" == "" ]; then
 #       echo "\nParameter \"-z (--zoom-level)\" is mandatory.."
@@ -165,62 +247,69 @@ eval set -- "$args"
 for i
 do
    case "$i" in
-	-z|--zoom-level) shift
-	   zoom_level=$1
-	   if [[ ! "$zoom_level" =~ ^-?[0-9]+$ || $zoom_level -lt 0 || $zoom_level -gt 18 ]]; then
-		echo "Zoom level values should be between 0-18"
-		exit $E_BADARGS
-	   fi
-	   shift
-	   ;;  
-	-w|--lon1) shift
-	   lon1=$1
-	   download_tiles=1
-	   shift
-	   #echo "Longitude west was set to $lon1"
-	   ;;  
-	-e|--lon2) shift
-	   lon2=$1
-	   download_tiles=1
-	   shift
-	   #echo "Longitude east was set to $lon2"
-	   ;;  
-	-n|--lat1) shift
-	   lat1=$1
-	   download_tiles=1
-	   shift
-	   #echo "Latitude north was set to $lat1"
-	   ;;  
-	-s|--lat2) shift
-	   lat2=$1
-	   download_tiles=1
-	   shift
-	   #echo "Latitude south was set to $lat2"
-	   ;;
-	-o|--osm-server) shift
-	   osm_server="$1"
-	   shift
-	   ;;
-	-h|--help) shift
-	   usage
-	   ;;
+      -z|--zoom-level) shift
+         zoom_level=$1
+         shift
+         ;;  
+      -w|--lon1) shift
+         lon1=$1
+         download_tiles=1
+         shift
+         #echo "Longitude west was set to $lon1"
+         ;;  
+      -e|--lon2) shift
+         lon2=$1
+         download_tiles=1
+         shift
+         #echo "Longitude east was set to $lon2"
+         ;;  
+      -n|--lat1) shift
+         lat1=$1
+         download_tiles=1
+         shift
+         #echo "Latitude north was set to $lat1"
+         ;;  
+      -s|--lat2) shift
+         lat2=$1
+         download_tiles=1
+         shift
+         #echo "Latitude south was set to $lat2"
+         ;;
+      -o|--osm-server) shift
+         osm_server="$1"
+         shift
+         ;;
+      -p|--skip-stitching) shift
+         skip_stitching=1
+         ;;
+      -h|--help) shift
+         usage
+         ;;
    esac
 done
 
 if [[ -z $zoom_level ]]; then
-	echo "Please provide the OpenStreetMap zoom level with the '-z' option."
-	exit $E_BADARGS
+   echo "Please provide the OpenStreetMap zoom level with the '-z' option."
+   exit $E_BADARGS
+else
+   # Check if the zoom level is a valid integer between 1-18
+   check_if_valid_number "$zoom_level" "int" || exit
+   if [[ $zoom_level -lt 1 || $zoom_level -gt 18 ]]; then
+      echo "Zoom level values should be between 1-18"
+      exit $E_BADARGS
+   fi
 fi
 
-# TODO: Check if osm_server is defined, before start the download of tiles.
-#       Make more sanity checks for the command line parameters (for example, no number greater than 85 should be used for the latitudes).
-#       Make wget multithreaded by putting a limited number of wget instances in the background (now it has unlimited concurrency which is probably not a good idea).
-#       Make checks (identify) of the downloaded files. If a file is already downloaded and not corrupt, do not re-download.
+# TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
 #       Update the readme at the top of this file and the README.md file.
 #       Implement automatic calibration for OziExplorer.
 #       Make subroutines for the stitching functionality?
 
+#####################################################################
+# If at least one coordinate has been given, try to download tiles. #
+#####################################################################
 if [[ $download_tiles -eq 1 ]]; then
+   # If one coordinate has been given, then all of the coordinates should have been given.
    if [[ -z $lon1 || -z $lon2 || -z $lat1 || -z $lat2 ]]; then
 	echo "If you provide coordinates for tile downloading, you need to provide all 4 coordinates:"
 	echo "   West (longitude 1)"
@@ -230,46 +319,157 @@ if [[ $download_tiles -eq 1 ]]; then
 	exit $E_BADARGS
    fi
    
+   # Check if the coordinate numbers are valid float numbers
+   check_if_valid_number $lon1 || exit
+   check_if_valid_number $lon2 || exit
+   check_if_valid_number $lat1 || exit
+   check_if_valid_number $lat2 || exit
+   
+   # Check if the user has given coordinates within the limits. No wrap-arounds are allows
+   #   e.g. -200° is actually 160°, but we do not support such cases
+   longtitude_val_error="Map wrap-arounds are not allowed. Use longtitude values between -180.0°(W) and 180.0°(E)."
+   latitude_val_error="Map wrap-arounds are not allowed. Use latitude values between 85.0511°(N) and -85.0511°(S)."
+   compare_nums $lon1 "<"     -180 && echo "$longtitude_val_error" && exit $E_BADARGS
+   compare_nums $lon2 ">"      180 && echo "$longtitude_val_error" && exit $E_BADARGS
+   compare_nums $lat1 ">"  85.0511 && echo "$latitude_val_error" && exit $E_BADARGS
+   compare_nums $lat2 "<" -85.0511 && echo "$latitude_val_error" && exit $E_BADARGS
+   
+   # Convert the coordinates to OSM tiles.
    tile_west=$(long2xtile $lon1 $zoom_level)
    tile_east=$(long2xtile $lon2 $zoom_level)
    tile_north=$(lat2ytile  $lat1 $zoom_level)
    tile_south=$(lat2ytile  $lat2 $zoom_level)
+
+   # echo $tile_west $tile_east
+   # echo $tile_north $tile_south
    
+   # The west tile should always be smaller than the east tile.
    if [[ $tile_west -gt $tile_east ]]; then
-	temp=$tile_west
-	tile_west=$tile_east
-	tile_east=$temp
+      echo ""
+      echo "WARNING: Longtitude 1 value should be smaller than that of longitude 2, because wrap arrounds are not supported. Swapping values and continuing."
+      echo ""
+      temp=$tile_west
+      tile_west=$tile_east
+      tile_east=$temp
    fi
    
+   # The north tile should always be smaller than the south tile.
    if [[ $tile_north -gt $tile_south ]]; then
-	temp=$tile_south
-	tile_south=$tile_north
-	tile_north=$temp
+      echo ""
+      echo "WARNING: Latitude 1 value should be smaller than that of latitude 2, because wrap arrounds are not supported. Swapping values and continuing."
+      echo ""
+      temp=$tile_south
+      tile_south=$tile_north
+      tile_north=$temp
    fi
-#    echo $tile_west $tile_east
-#    echo $tile_north $tile_south
    
+   # If the calculated tiles wrap around go out of the limits, just use the tiles on the limits
+   compare_nums $tile_north "<" 0 && tile_north=0
+   compare_nums $tile_south ">" $(( 2**$zoom_level-1 )) && tile_south=$(( 2**$zoom_level-1 ))
+   compare_nums $tile_west "<" 0 && tile_west=0
+   compare_nums $tile_east ">" $(( 2**$zoom_level-1 )) && tile_east=$(( 2**$zoom_level-1 ))
+   
+   # echo $tile_west $tile_east
+   # echo $tile_north $tile_south
+   
+   # echo $(xtile2long $tile_west $zoom_level) $(xtile2long $tile_east $zoom_level)
+   # echo $(ytile2lat $tile_north $zoom_level) $(ytile2lat $tile_south $zoom_level)
+
+   # Eventually download the tiles.
    total_tiles_to_download=$(( (($tile_east - $tile_west) + 1) * (( $tile_south - $tile_north ) + 1) ))
    downloading_now=0
+   successfully_downloaded=0
+   parallel_downloads=30
+   #set -x
+   echo "Started downloading on "$(date) > $zoom_level.log
+   echo "Downloading $total_tiles_to_download tiles."
+   declare -A pid_array=()
    for (( lon=$tile_west; lon<=$tile_east; lon++)); do
-	mkdir -p mkdir "$zoom_level/$lon"
-	for (( lat=$tile_north; lat<=$tile_south; lat++)); do
-	   (( ++downloading_now ))
-	   echo "Downloading tile $downloading_now/$total_tiles_to_download.."
-	   wget "$osm_server/$zoom_level/$lon/$lat.png" -O "$zoom_level/$lon/$lat.png" -o /dev/null &
-	done
+      mkdir -p mkdir "$zoom_level/$lon"
+      for (( lat=$tile_north; lat<=$tile_south; lat++)); do
+         (( ++downloading_now ))
+         # If an ${osm_server} is not provided by the OSM_SERVER environment variable, 
+         # or by the "-o" option, then try to use the MapQuest servers in a round-robin fashion.
+         if [[ -z "${osm_server}" ]]; then
+            # MapQuest serves jpg files
+            tile_server=${osm_mapquest_servers[$(( $downloading_now % ${#osm_mapquest_servers[@]} ))]}
+            ext="jpg"
+         else
+            # The default OSM servers usually serve png's
+            tile_server="$osm_server"
+            ext="png"
+         fi
+         
+         # Check how many concurrent threads are running.
+         # If we have reached the "$parallel_downloads" limit, then we have to wait for a thread to complete before starting another one.
+         if [[ ${#pid_array[@]} -ge $parallel_downloads ]]; then
+            removed=0
+            while [[ $removed -eq 0 ]]; do
+               # Run in this while loop until at least on thread completes its work.
+               for i in ${!pid_array[@]}; do
+                  # If the process finished downloading, ps will return an exit code other than zero.
+                  ps $i > /dev/null
+                  exit_status=$?
+                  if [[ $exit_status -ne 0 ]]; then
+                     # Then call wait in order to get the exit status of the finished background process.
+                     wait $i
+                     exit_status=$?
+                     if [[ $exit_status -eq 0 ]]; then
+                        # If the exit status of the background process is zero, increase the "successfully_downloaded" counter
+                        (( successfully_downloaded++ ))
+                     else
+                        # If the exit status of the finished background process is not 0 (meaning that the process
+                        # did not finish successfylly), then add a log warning so that the user knows which tiles
+                        # faced download problems.
+                        echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> $zoom_level.log
+                     fi
+                     # remove the pid from the array
+                     unset "pid_array[$i]"
+                     (( removed++ ))
+                  fi
+               done
+            done
+         fi
+         
+         # If the file does not exist or is corrupted, then download the file.
+         if [[ ! -f "$zoom_level/$lon/$lat.$ext" || $(identify -format "%h" "$zoom_level/$lon/$lat.$ext") -ne 256 && $(identify -format "%w" "$zoom_level/$lon/$lat.$ext") -ne 256 ]]; then
+            echo "Downloading tile $downloading_now/$total_tiles_to_download.."
+            # Start a new download thread using wget and put it in the background.
+            wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$zoom_level/$lon/$lat.$ext" -o /dev/null &
+            # Store the PID of the last wget command added in the background.
+            pid_array[$!]="$zoom_level/$lon/$lat.$ext"
+         else
+            echo "File '$zoom_level/$lon/$lat.$ext' ($downloading_now/$total_tiles_to_download) already downloaded."
+            (( successfully_downloaded++ ))
+         fi
+         
+      done
    done
-   #count=0
-   #while [[ count -lt 12 ]]; do
-   #       if [[ $(jobs | wc -l) -lt 5 ]]; then
-   #               echo Sleeping "$count" 
-   #               (sleep $count) &
-   #               ((count++))
-   #       fi
-   #done
-   #wait
+   echo "Finished downloading on "$(date) >> $zoom_level.log
+   
+   problems_occured=$(( $total_tiles_to_download - $successfully_downloaded ))
+   if [[ $problems_occured -gt 0 ]]; then
+      echo "ERRORS logged. $(( $total_tiles_to_download - $successfully_downloaded ))/$total_tiles_to_download could not be downloaded successfully."
+      echo "Please check the log file for more details."
+      echo ""
+      echo "Please download all of the tiles before continuing with the stitching. (rerun)"
+      echo "The program will now exit."
+      exit 1
+   fi
 fi
 
+if [[ $skip_stitching -eq 1 ]]; then
+   echo "Skipping stitching."
+   if [[ $download_tiles -ne 1 ]]; then
+      echo "The option --skip-stitching only makes sense to use when downloading tiles... :/"
+      echo "Skipping stitching anyway..."
+   fi
+   exit 0
+fi
+
+######################################
+# Start the stitching procedure here #
+######################################
 if [[ -d "$zoom_level" ]]; then
    stitches_folder="$(pwd)/stitches/$zoom_level"
    stitches_folder_final="$stitches_folder/../final/$zoom_level/"
@@ -291,11 +491,10 @@ else
    exit 1
 fi
 
-######################################################################################
-
 files_per_folder=
 filenames_in_folder=()
 total_folders_to_be_processed=$(ls -U $zoom_level | wc -l)
+ext=
 
 ####################################
 # Step 1: Make some sanity checks. #
@@ -311,6 +510,16 @@ for folder in $(ls -U $zoom_level | sort -n); do
       # If it is the first round in the loop
       files_per_folder=$files_in_folder
       for filename in $(ls -U "$full_path_folder" | sort -n); do
+         if [[ -z $ext ]]; then
+            ext="$(echo "$filename" | rev | cut -d. -f1 | rev)"
+         else
+            if [[ "$(echo "$filename" | rev | cut -d. -f1 | rev)" -ne "$ext" ]]; then
+               # If you find different extensions in a folder, then exit.
+               echo "ERROR: '$filename' does not match default extension '$ext'"
+               echo "       All the files in $full_path_folder must have the same extension."
+               exit 1
+            fi
+         fi
          filenames_in_folder+=( "$filename" )
       done
    else
@@ -477,9 +686,19 @@ for folder in $(ls $zoom_level); do
       # or the height is not as needed ($vertical_resolution_per_stitch), then (re)-generate the file.
       if [[ ! -f "$filename_to_save" || ! $(identify "$filename_to_save") || $(identify -format "%h" "$filename_to_save") -ne $vertical_resolution_per_stitch ]]; then
          echo "Building '$(readlink -f "$filename_to_save")'"
-         eval "gm montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
-      
-         gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+         # There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
+         # So use imagemagick when stitching jpg files from MapQuest.
+         if [[ "$ext" == "jpg" ]]; then
+            eval "montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
+            convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+         else
+            eval "gm montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
+            #eval "echo gm montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
+            #echo 'identify -format "%h" "$filename_to_save"' $(identify -format "%h" "$filename_to_save")
+            #echo $vertical_resolution_per_stitch
+            #echo 'gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"' "-crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save")"
+            gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+         fi
       fi
    done
 done
@@ -594,9 +813,17 @@ for (( j=0; j<$vertical_divide_by; j++ )); do
       # or the width is not as needed ($horizontal_resolution_per_stitch), then (re)-generate the file.
       if [[ ! -f "$filename_to_save" || $(identify -format "%w" "$filename_to_save") -ne $horizontal_resolution_per_stitch ]]; then
          echo "Building '$(readlink -f "$filename_to_save")'"
-         eval "gm montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
-      
-         gm convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+         # There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
+         # So use imagemagick when stitching jpg files from MapQuest.
+         if [[ "$ext" == "jpg" ]]; then
+            eval "montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
+         
+            convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+         else
+            eval "gm montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
+         
+            gm convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+         fi
       fi
    done
 
