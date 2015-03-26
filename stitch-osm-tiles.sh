@@ -74,49 +74,154 @@ trap "exit" INT
 
 # The horizontal or vertical resolution of the final tiles should not exceed that of the $max_resolution_px variable
 max_resolution_px=20000
-# MapQuest tile servers:
-#   http://otile1.mqcdn.com/tiles/1.0.0/osm
-#   http://otile2.mqcdn.com/tiles/1.0.0/osm
-#   http://otile3.mqcdn.com/tiles/1.0.0/osm
-#   http://otile4.mqcdn.com/tiles/1.0.0/osm
-osm_server=${OSM_SERVER:-}
+
+# Variables to store the custom server info
+osm_custom_server=${OSM_CUSTOM_SERVER:-}
+osm_custom_extension=${OSM_CUSTOM_EXTENSION:-"png"}
+
+# If you want to add new providers, add the provider name in the "available_providers" array
+# and add the 2 more arrays and 1 more variable for each new provider:
+#      provider_available_overlays
+#      provider_extension
+#      provider_tile_servers
+# Look at how the already existing providers are defined below.
+# Note that the "provider_tile_servers" array is using a codeword
+# "_OVERLAY_". The "_OVERLAY_" will be replaced with the overlay
+# chosen by the user at each execution of the script.
+#
+# The first values of each array are considered to be the defaults
+# available_providers=( "mapquest" "thunderforest" )
+available_providers=( "mapquest" )
+
+# MapQuest tile servers
+# http://www.mapquest.com/
+#
 # Available MAPQUEST Overlays:
-#   osm: OpenStreetMap (available zoom levels 0-18)
+#   osm|map: OpenStreetMap (available zoom levels 0-18)
 #   sat: Satellite (available zoom levels 0-11)
-overlay=${OSM_MAPQUEST_OVERLAY:-osm}
-osm_mapquest_servers=( "http://otile1.mqcdn.com/tiles/1.0.0/osm" "http://otile2.mqcdn.com/tiles/1.0.0/osm" "http://otile3.mqcdn.com/tiles/1.0.0/osm" "http://otile4.mqcdn.com/tiles/1.0.0/osm" )
+mapquest_available_overlays=( "osm" "map" "sat" )
+mapquest_extension="jpg"
+mapquest_tile_servers=( 
+ "http://otile1.mqcdn.com/tiles/1.0.0/_OVERLAY_"
+ "http://otile2.mqcdn.com/tiles/1.0.0/_OVERLAY_"
+ "http://otile3.mqcdn.com/tiles/1.0.0/_OVERLAY_"
+ "http://otile4.mqcdn.com/tiles/1.0.0/_OVERLAY_"
+)
+
+# # Thunderforest tile servers
+# # http://thunderforest.com/
+# #
+# # Available Thunderforest overlays: opencyclemap, outdoors, landscape, transport, transport-dark
+# # http://thunderforest.com/outdoors/
+# # http://thunderforest.com/landscape/
+# thunderforest_available_overlays=( "outdoors" "opencyclemap" "landscape" "transport" "transport-dark" )
+# thunderforest_extension="png"
+# thunderforest_tile_servers=(
+#  "http://a.tile.thunderforest.com/_OVERLAY_"
+#  "http://b.tile.thunderforest.com/_OVERLAY_"
+#  "http://c.tile.thunderforest.com/_OVERLAY_"
+# )
 
 function usage {
-  echo ""
-  echo "Usage: $(basename $0) -z ZOOM [OPTION]..."
-  echo "Script to stitch OpenStreetMap tiles in a single (or multiple) larger"
-  echo "ones for printouts or use in programs such as OziExplorer."
-  echo ""
-  echo "If only the zoom level is given as a parameter, the script will look for the specified"
-  echo "zoom folder and try to stitch any OSM tiles. If more options are utilized, the script"
-  echo "can be used to download tiles defined by a bounding box and then stitch them if -p"
-  echo "option is not used."
-  echo ""
-  echo " -z|--zoom-level ZOOM           Valid ZOOM values: 0-18"
-  echo " -o|--osm-server OSM_SERVER     The URL of your tile server. If this option is"
-  echo "                                  not set, mapquest tile servers will be used."
-  echo "                                  This option can also be set as an OSM_SERVER"
-  echo "                                  environment variable OSM_SERVER."
-  echo " -w|--lon1 W_DEGREES            Set the western (W) longtitude of a bounding box for"
-  echo "                                  tile downloading. -e, -n and -s should also be set."
-  echo " -e|--lon2 E_DEGREES            Set the eastern (E) longtitude of a bounding box for"
-  echo "                                  tile downloading. -w, -n and -s should also be set."
-  echo " -n|--lat1 N_DEGREES            Set the northern (N) latitude of a bounding box for"
-  echo "                                  tile downloading. -w, -e and -s should also be set."
-  echo " -s|--lat2 S_DEGREES            Set the southern (S) latitude of a bounding box for"
-  echo "                                  tile downloading. -w, -e, and -n should also be set."
-  echo " -p|--skip-stitching            This option can be used together with the -w, -e, -n"
-  echo "                                  and -s options, in order to just download tiles, but"
-  echo "                                  not stitch them together. The stitching can always"
-  echo "                                  done later."
-  echo " -h|--help                      Prints this help message."
-  echo ""
-  exit 0
+   echo ""
+   echo "Usage: $(basename $0) -z ZOOM [OPTION]..."
+   echo "Script to stitch OpenStreetMap tiles in a single (or multiple) larger"
+   echo "ones for printouts or use in programs such as OziExplorer."
+   echo ""
+   echo "If only the zoom level is given as a parameter, the script will look for the specified"
+   echo "zoom folder and try to stitch any OSM tiles. If more options are utilized, the script"
+   echo "can be used to download tiles defined by a bounding box and then stitch them if -p"
+   echo "option is not used."
+   echo ""
+   echo " -z|--zoom-level ZOOM                 Valid ZOOM values: 0-18"
+   echo " -o|--custom-osm-server OSM_SERVER    The URL of your tile server. If this option is"
+   echo "                                        not set, mapquest tile servers will be used."
+   echo "                                        This option can also be set as an OSM_CUSTOM_SERVER"
+   echo "                                        environment variable."
+   echo " -x|--custom-osm-extension EXT        Choose the extension of the tiles served by the custom"
+   echo "                                        server. The provided extension should not be prefixed"
+   echo "                                        with a dot '.'. For example, if the server is serving"
+   echo "                                        jpg tiles, then the option should be called like"
+   echo "                                           '-x jpg'"
+   echo "                                        This option can also be set as an OSM_CUSTOM_EXTENSION"
+   echo "                                        environment variable, and it has no effect if it is"
+   echo "                                        not used together with the -o option."
+   echo " -w|--lon1 W_DEGREES                  Set the western (W) longtitude of a bounding box for"
+   echo "                                        tile downloading. -e, -n and -s should also be set."
+   echo " -e|--lon2 E_DEGREES                  Set the eastern (E) longtitude of a bounding box for"
+   echo "                                        tile downloading. -w, -n and -s should also be set."
+   echo " -n|--lat1 N_DEGREES                  Set the northern (N) latitude of a bounding box for"
+   echo "                                        tile downloading. -w, -e and -s should also be set."
+   echo " -s|--lat2 S_DEGREES                  Set the southern (S) latitude of a bounding box for"
+   echo "                                        tile downloading. -w, -e, and -n should also be set."
+   echo " -p|--skip-stitching                  This option can be used together with the -w, -e, -n"
+   echo "                                        and -s options, in order to just download tiles, but"
+   echo "                                        not stitch them together. The stitching can always"
+   echo "                                        done later."
+   echo " -t|--tile-server-provider PROVIDER   Choose one of the predefined tile server providers."
+   echo "                                         Available tile server providers:"
+   for (( i=0; i<${#available_providers[@]}; i++ )); do
+	echo "                                             * ${available_providers[$i]}"
+   done
+   echo " -r|--tile-server-provider-overlay OVERLAY"
+   echo "                                      Choose one of the overlays for the predefined tile"
+   echo "                                        providers. This option has no effect if it is"
+   echo "                                        not used together in combination with -t option."
+   echo "                                         Available overlays per provider:"
+   for (( i=0; i<${#available_providers[@]}; i++ )); do
+	echo "                                             * ${available_providers[$i]}"
+	local available_overlays="${available_providers[$i]}"_available_overlays[@]
+	available_overlays=( "${!available_overlays}" )
+	
+	for (( j=0; j<${#available_overlays[@]}; j++ )); do
+	   echo "                                                - ${available_overlays[$j]}"
+	done
+   done
+   echo " -h|--help                            Prints this help message."
+   echo ""
+   exit 0
+}
+
+provider_tile_servers=
+process_provider()
+{
+   local provider=$1
+   local overlay=$2
+   
+   local available_overlays="$provider"_available_overlays[@]
+   local tile_servers="$provider"_tile_servers[@]
+   
+   available_overlays=( "${!available_overlays}" )
+   tile_servers=( "${!tile_servers}" )
+   
+   valid_overlay_chosen=0
+   if [[ ! -z "$overlay" ]]; then
+	for over in "${available_overlays[@]}"; do
+	   if [[ "$overlay" == "$over" ]]; then
+		valid_overlay_chosen=1
+		break
+	   fi
+	done
+   else
+	# If an overlay was not chosen by the user, use as default
+	# the first one in the "available_overlays" array 
+	overlay=${available_overlays[0]}
+	valid_overlay_chosen=1
+   fi
+   
+   if [[ $valid_overlay_chosen -eq 0 ]]; then
+	echo "ERROR: The chosen overlay '$overlay' for provider '$provider' is not valid."
+	echo "   A list of valid overlays for the '$provider' provider:"
+	for (( i=0; i<${#available_overlays[@]}; i++ )); do
+	   echo "      $(( i+1 )): ${available_overlays[$i]}"
+	done
+	exit 1
+   else
+	for (( i=0; i<${#tile_servers[@]}; i++ )); do
+	   tile_servers[$i]=$(echo "${tile_servers[$i]}" | sed 's/_OVERLAY_/'"$overlay"'/')
+	done
+	provider_tile_servers=( "${tile_servers[@]}" )
+   fi
 }
 
 ######################################################################################
@@ -234,7 +339,7 @@ lat2=
 zoom_level=
 skip_stitching=0
 
-args=$(getopt --options z:w:e:n:s:ho:p --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,osm-server:,skip-stitching -- "$@")
+args=$(getopt --options z:w:e:n:s:ho:pt:r:x: --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension: -- "$@")
 
 #if [ "$(echo "$args" | $EGREP "(^|'[[:space:]]')-z[[:space:]]")" == "" ]; then
 #       echo "\nParameter \"-z (--zoom-level)\" is mandatory.."
@@ -248,35 +353,47 @@ for i
 do
    case "$i" in
       -z|--zoom-level) shift
-         zoom_level=$1
+         zoom_level="$1"
          shift
          ;;  
       -w|--lon1) shift
-         lon1=$1
+         lon1="$1"
          download_tiles=1
          shift
          #echo "Longitude west was set to $lon1"
          ;;  
       -e|--lon2) shift
-         lon2=$1
+         lon2="$1"
          download_tiles=1
          shift
          #echo "Longitude east was set to $lon2"
          ;;  
       -n|--lat1) shift
-         lat1=$1
+         lat1="$1"
          download_tiles=1
          shift
          #echo "Latitude north was set to $lat1"
          ;;  
       -s|--lat2) shift
-         lat2=$1
+         lat2="$1"
          download_tiles=1
          shift
          #echo "Latitude south was set to $lat2"
          ;;
-      -o|--osm-server) shift
-         osm_server="$1"
+      -o|--custom-osm-server) shift
+         osm_custom_server="$1"
+         shift
+         ;;
+	-x|--custom-osm-extension) shift
+         osm_custom_extension="$1"
+         shift
+         ;;
+	-t|--tile-server-provider) shift
+         provider="$1"
+         shift
+         ;;
+      -r|--tile-server-provider-overlay) shift
+         overlay="$1"
          shift
          ;;
       -p|--skip-stitching) shift
@@ -375,6 +492,53 @@ if [[ $download_tiles -eq 1 ]]; then
    # echo $(xtile2long $tile_west $zoom_level) $(xtile2long $tile_east $zoom_level)
    # echo $(ytile2lat $tile_north $zoom_level) $(ytile2lat $tile_south $zoom_level)
 
+   # If a tile provider has not been chosen....
+   if [[ -z "$provider" ]]; then
+	# And if the user has not provided any custom tile server....
+	if [[ -z "${osm_custom_server}" ]]; then
+	   # Then use the default provider with the default overlay
+	   echo "Using the default provider '${available_providers[0]}' to download tiles"
+	   process_provider "${available_providers[0]}"
+	   provider="${available_providers[0]}"
+	else
+	   # Else, use the custom tile server.
+	   provider_tile_servers=( "${osm_custom_server}" )
+	   # And set the provider to osm custom, in order to use the correct extension later on.
+	   provider="osm_custom"
+	fi
+   else
+   # If a tile provider has been chosen, make sure that the provider is already known,
+   # and choose a proper overlay
+	provider_is_valid=0
+	for prov in ${available_providers[@]}; do
+	   if [[ "$provider" == "$prov" ]]; then
+		provider_is_valid=1
+		break
+	   fi
+	done
+	if [[ $provider_is_valid -ne 1 ]]; then
+	   # If the provided provider is not known, then use the default provider.
+	   echo "WARNING: Provider $provider was not found in the list of the valid providers."
+	   echo "         Falling back to the default provider: ${available_providers[0]}"
+	   process_provider "${available_providers[0]}"
+	   provider="${available_providers[0]}"
+	else
+	   # At this point, we know that the given provider is valid.
+	   # Now check if the user has asked for a specific overlay, and use this if possible.
+	   # If the user hasn't chosen any overlay, use the default for this provider.
+	   if [[ ! -z "$overlay" ]]; then
+		process_provider "$provider" "$overlay"
+	   else
+		process_provider "$provider"
+	   fi
+	fi
+   fi
+   
+   temp_var="$provider"_extension
+   ext=${!temp_var}
+   # echo "${provider_tile_servers[@]}"
+   # echo "$ext"
+   
    # Eventually download the tiles.
    total_tiles_to_download=$(( (($tile_east - $tile_west) + 1) * (( $tile_south - $tile_north ) + 1) ))
    downloading_now=0
@@ -388,17 +552,8 @@ if [[ $download_tiles -eq 1 ]]; then
       mkdir -p mkdir "$zoom_level/$lon"
       for (( lat=$tile_north; lat<=$tile_south; lat++)); do
          (( ++downloading_now ))
-         # If an ${osm_server} is not provided by the OSM_SERVER environment variable, 
-         # or by the "-o" option, then try to use the MapQuest servers in a round-robin fashion.
-         if [[ -z "${osm_server}" ]]; then
-            # MapQuest serves jpg files
-            tile_server=${osm_mapquest_servers[$(( $downloading_now % ${#osm_mapquest_servers[@]} ))]}
-            ext="jpg"
-         else
-            # The default OSM servers usually serve png's
-            tile_server="$osm_server"
-            ext="png"
-         fi
+         # If more than one tile server is provided, use all of the tile servers in a round robin fashion.
+         tile_server=${provider_tile_servers[$(( $downloading_now % ${#provider_tile_servers[@]} ))]}
          
          # Check how many concurrent threads are running.
          # If we have reached the "$parallel_downloads" limit, then we have to wait for a thread to complete before starting another one.
@@ -435,6 +590,7 @@ if [[ $download_tiles -eq 1 ]]; then
          if [[ ! -f "$zoom_level/$lon/$lat.$ext" || $(identify -format "%h" "$zoom_level/$lon/$lat.$ext") -ne 256 && $(identify -format "%w" "$zoom_level/$lon/$lat.$ext") -ne 256 ]]; then
             echo "Downloading tile $downloading_now/$total_tiles_to_download.."
             # Start a new download thread using wget and put it in the background.
+            echo "wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$zoom_level/$lon/$lat.$ext" -o /dev/null"
             wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$zoom_level/$lon/$lat.$ext" -o /dev/null &
             # Store the PID of the last wget command added in the background.
             pid_array[$!]="$zoom_level/$lon/$lat.$ext"
@@ -513,7 +669,7 @@ for folder in $(ls -U $zoom_level | sort -n); do
          if [[ -z $ext ]]; then
             ext="$(echo "$filename" | rev | cut -d. -f1 | rev)"
          else
-            if [[ "$(echo "$filename" | rev | cut -d. -f1 | rev)" -ne "$ext" ]]; then
+            if [[ "$(echo "$filename" | rev | cut -d. -f1 | rev)" != "$ext" ]]; then
                # If you find different extensions in a folder, then exit.
                echo "ERROR: '$filename' does not match default extension '$ext'"
                echo "       All the files in $full_path_folder must have the same extension."
