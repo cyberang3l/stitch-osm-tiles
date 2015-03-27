@@ -314,59 +314,88 @@ process_provider()
 #
 #   X and Y
 #      X goes from 0 (left edge is 180 °W) to 2^zoom − 1 (right edge is 180 °E)
-#      Y goes from 0 (top edge is 85.0511 °N) to 2^zoom − 1 (bottom edge is 85.0511 °S) in a Mercator projection
+#      Y goes from 0 (top edge is 85.0511 °N) to 2^zoom − 1 (bottom edge is 85.0511 °S) in a "Mercator projection" <- THIS IS VERY IMPORTANT
+#                                                                                                      LATER WHEN I PERFORM THE CALIBRATION.
 #   For the curious, the number 85.0511 is the result of arctan(sinh(π)). By using this bound, the entire map becomes a (very large) square.
 #
 #   https://help.openstreetmap.org/questions/37743/tile-coordinates-from-latlonzoom-formula-problem
 #
 xtile2long()
 {
- xtile=$1
- zoom=$2
- echo "${xtile} ${zoom}" | awk '{printf("%.9f", $1 / 2.0^$2 * 360.0 - 180)}'
+   xtile=$1
+   zoom=$2
+   echo "${xtile} ${zoom}" | awk '{printf("%.9f", $1 / 2.0^$2 * 360.0 - 180)}'
 } 
  
 long2xtile()  
 { 
- long=$1
- zoom=$2
- echo "${long} ${zoom}" | awk '{ xtile = ($1 + 180.0) / 360 * 2.0^$2; 
-  xtile+=xtile<0?-0.5:0.5;
-  printf("%d", xtile ) }'
+   long=$1
+   zoom=$2
+   echo "${long} ${zoom}" | awk '{ xtile = ($1 + 180.0) / 360 * 2.0^$2; 
+      xtile+=xtile<0?-0.5:0.5;
+      printf("%d", xtile ) }'
 }
  
 ytile2lat()
 {
- ytile=$1;
- zoom=$2;
- tms=$3;
- if [ ! -z "${tms}" ]
- then
- #  from tms_numbering into osm_numbering
-  ytile=`echo "${ytile}" ${zoom} | awk '{printf("%d\n",((2.0^$2)-1)-$1)}'`;
- fi
- lat=`echo "${ytile} ${zoom}" | awk -v PI=3.14159265358979323846 '{ 
-       num_tiles = PI - 2.0 * PI * $1 / 2.0^$2;
-       printf("%.9f", 180.0 / PI * atan2(0.5 * (exp(num_tiles) - exp(-num_tiles)),1)); }'`;
- echo "${lat}";
+   ytile=$1
+   zoom=$2
+   tms=$3
+   if [ ! -z "${tms}" ]
+   then
+   #  from tms_numbering into osm_numbering
+   ytile=$(echo "${ytile}" ${zoom} | awk '{printf("%d\n",((2.0^$2)-1)-$1)}')
+   fi
+   lat=$(echo "${ytile} ${zoom}" | awk -v PI=3.14159265358979323846 '{ 
+            num_tiles = PI - 2.0 * PI * $1 / 2.0^$2;
+            printf("%.9f", 180.0 / PI * atan2(0.5 * (exp(num_tiles) - exp(-num_tiles)),1)); }')
+   echo "${lat}"
 }
  
 lat2ytile() 
 { 
- lat=$1;
- zoom=$2;
- tms=$3;
- ytile=`echo "${lat} ${zoom}" | awk -v PI=3.14159265358979323846 '{ 
-   tan_x=sin($1 * PI / 180.0)/cos($1 * PI / 180.0);
-   ytile = (1 - log(tan_x + 1/cos($1 * PI/ 180))/PI)/2 * 2.0^$2; 
-   ytile+=ytile<0?-0.5:0.5;
-   printf("%d", ytile ) }'`; 
- if [ ! -z "${tms}" ]
- then
-  #  from oms_numbering into tms_numbering
-  ytile=`echo "${ytile}" ${zoom} | awk '{printf("%d\n",((2.0^$2)-1)-$1)}'`;
- fi
- echo "${ytile}";
+   lat=$1
+   zoom=$2
+   tms=$3
+   ytile=$(echo "${lat} ${zoom}" | awk -v PI=3.14159265358979323846 '{ 
+      tan_x=sin($1 * PI / 180.0)/cos($1 * PI / 180.0);
+      ytile = (1 - log(tan_x + 1/cos($1 * PI/ 180))/PI)/2 * 2.0^$2; 
+      ytile+=ytile<0?-0.5:0.5;
+      printf("%d", ytile ) }')
+   if [ ! -z "${tms}" ]; then
+      #  from oms_numbering into tms_numbering
+      ytile=`echo "${ytile}" ${zoom} | awk '{printf("%d\n",((2.0^$2)-1)-$1)}'`
+   fi
+   echo "${ytile}"
+}
+
+########################################################################################
+# Get the longtitude and latitude per pixel, based on the global pixel scale of the map.
+# For example, if the zoom level is 0, then only one 256x256 tile compose the complete
+# map. In this case, a y pixel value of 0 will give a latitude of ~-85deg and a y pixel
+# value of 256 will give a latitude of +85.
+# If the zoom is 3, then the whole map is 8x8 tiles, so 2048x2048 pixels. In this case
+# a y pixel value of 0 will give a latitude of ~-85deg and a y pixel value of 20248 will
+# give a latitude of +85.
+xpixel2long()
+{
+   xpixel=$1
+   zoom=$2
+   awk -v px=$xpixel -v z=$zoom '
+      BEGIN {
+         printf "%.15f", px / 256 / 2.0^z * 360.0 - 180
+      }'
+}
+
+ypixel2lat()
+{
+   ypixel=$1
+   zoom=$2
+   awk -v PI=3.14159265358979323846 -v px=$ypixel -v z=$zoom '
+      BEGIN {
+         num_pixel = PI - 2.0 * PI * px / 256 / 2.0^z
+         printf "%.15f", 180.0 / PI * atan2(0.5 * (exp(num_pixel) - exp(-num_pixel) ), 1)
+      }'
 }
 ######################################################################################
 
@@ -432,7 +461,6 @@ convert_to_degrees()
    
    BEGIN {
 	abs_d=abs(d)
-	orient=orientation(d)
 	
 	printf "%3d %12.9f %s", abs_d, (abs_d-int(abs_d))*60, orientation(d, o)
    }'
@@ -504,7 +532,7 @@ Point01,xy, $z, $z, in, deg, ${N[0]}, ${N[1]}, ${N[2]}, ${W[0]}, ${W[1]}, ${W[2]
 Point02,xy, $w, $h, in, deg, ${S[0]}, ${S[1]}, ${S[2]}, ${E[0]}, ${E[1]}, ${E[2]}, grid,   , , ,N
 Point03,xy, $w, $z, in, deg, ${N[0]}, ${N[1]}, ${N[2]}, ${E[0]}, ${E[1]}, ${E[2]}, grid,   , , ,N
 Point04,xy, $z, $h, in, deg, ${S[0]}, ${S[1]}, ${S[2]}, ${W[0]}, ${W[1]}, ${W[2]}, grid,   , , ,N
-Projection Setup,,,,,,,,,,m
+Projection Setup,,,,,,,,,,
 Map Feature = MF ; Map Comment = MC     These follow if they exist
 Track File = TF      These follow if they exist
 Moving Map Parameters = MM?    These follow if they exist
@@ -519,10 +547,6 @@ MMPLL,2, $East, $North
 MMPLL,3, $East, $South
 MMPLL,4, $West, $South
 MM1B,$MMB1
-LL Grid Setup
-LLGRID,No,No Grid,Yes,255,16711680,0,No Labels,0,16777215,7,1,Yes,x
-Other Grid Setup
-GRGRID,No,No Grid,Yes,255,16711680,No Labels,0,16777215,8,1,Yes,No,No,x
 MOP,Map Open Position,0,0
 IWH,Map Image Width/Height,$width,$height"
 }
@@ -1199,18 +1223,22 @@ if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
    
    westmost_long=$(xtile2long $tile_west $zoom_level)
    northmost_lat=$(ytile2lat $tile_north $zoom_level)
+   northmost_pixel=$(( $tile_north * 256 + 1 ))
+   westmost_pixel=$(( $tile_west * 256 + 1 ))
   
    # Process row (each vertical y represents one row)....
    for ((y=0; y<$vertical_divide_by; y++)); do
 	# ...and columns x for each row y.
 	for ((x=0; x<$horizontal_divide_by; x++)); do
-	   # The N latitude of each tile is nm-yt*ydegpx*ypixels
-	   N=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", nm-yt*ydegpx*ypixels }')
-	   # The S latitude of each tile is the same as N, but we have to add a complete vertical tile minus 1 pixel in degrees.
-	   S=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", nm-(yt+1)*ydegpx*ypixels+ydegpx }')
-	   # Similarly, we calculate the west and east
-	   W=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", wm+xt*xdegpx*xpixels }')
-	   E=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", wm+(xt+1)*xdegpx*xpixels-xdegpx }')
+           top_pixel_on_current_map=$(( $northmost_pixel + $y * $vertical_resolution_per_stitch ))
+           bottom_pixel_on_current_map=$(( $northmost_pixel + $y * $vertical_resolution_per_stitch + $vertical_resolution_per_stitch - 1 ))
+           left_pixel_on_current_map=$(( $westmost_pixel + $x * $horizontal_resolution_per_stitch ))
+           right_pixel_on_current_map=$(( $westmost_pixel + $x * $horizontal_resolution_per_stitch + $horizontal_resolution_per_stitch - 1 ))
+           
+	   N=$(ypixel2lat $top_pixel_on_current_map $zoom_level)
+	   S=$(ypixel2lat $bottom_pixel_on_current_map $zoom_level)
+	   W=$(xpixel2long $left_pixel_on_current_map $zoom_level)
+	   E=$(xpixel2long $right_pixel_on_current_map $zoom_level)
 	   # echo "$y"_"$x"
 	   # echo -e "$N"
 	   # echo -e "$S"
