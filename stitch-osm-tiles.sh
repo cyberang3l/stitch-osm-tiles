@@ -70,10 +70,14 @@
 #                 $ cd ~/downloaded_tiles
 #                 $ ./stitch-osm-tiles.sh 12
 
-trap "exit" INT
+# TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
+#       Update the readme at the top of this file and the README.md file.
+#       Implement automatic calibration for OziExplorer: Implemented, but needs testing.
+#       Make subroutines for the stitching functionality?
+#       Save calibration files in the proper directory
+#       Add project functionality and store the downloaded data inside a project directory.
 
-# The horizontal or vertical resolution of the final tiles should not exceed that of the $max_resolution_px variable
-max_resolution_px=20000
+trap "exit" INT
 
 # Variables to store the custom server info
 osm_custom_server=${OSM_CUSTOM_SERVER:-}
@@ -133,7 +137,19 @@ function usage {
    echo "can be used to download tiles defined by a bounding box and then stitch them if -p"
    echo "option is not used."
    echo ""
-   echo " -z|--zoom-level ZOOM                 Valid ZOOM values: 0-18"
+   echo " -z|--zoom-level ZOOM                 Valid ZOOM values: 0-18. This option is mandatory."
+   echo " -w|--lon1 W_DEGREES                  Set the western (W) longtitude of a bounding box for"
+   echo "                                        tile downloading. -e, -n and -s should also be set."
+   echo "                                        This option is mandatory."
+   echo " -e|--lon2 E_DEGREES                  Set the eastern (E) longtitude of a bounding box for"
+   echo "                                        tile downloading. -w, -n and -s should also be set."
+   echo "                                        This option is mandatory."
+   echo " -n|--lat1 N_DEGREES                  Set the northern (N) latitude of a bounding box for"
+   echo "                                        tile downloading. -w, -e and -s should also be set."
+   echo "                                        This option is mandatory."
+   echo " -s|--lat2 S_DEGREES                  Set the southern (S) latitude of a bounding box for"
+   echo "                                        tile downloading. -w, -e, and -n should also be set."
+   echo "                                        This option is mandatory."
    echo " -o|--custom-osm-server OSM_SERVER    The URL of your tile server. If this option is"
    echo "                                        not set, mapquest tile servers will be used."
    echo "                                        This option can also be set as an OSM_CUSTOM_SERVER"
@@ -141,23 +157,24 @@ function usage {
    echo " -x|--custom-osm-extension EXT        Choose the extension of the tiles served by the custom"
    echo "                                        server. The provided extension should not be prefixed"
    echo "                                        with a dot '.'. For example, if the server is serving"
-   echo "                                        jpg tiles, then the option should be called like"
+   echo "                                        jpg tiles, then the option should be called like:"
    echo "                                           '-x jpg'"
    echo "                                        This option can also be set as an OSM_CUSTOM_EXTENSION"
    echo "                                        environment variable, and it has no effect if it is"
    echo "                                        not used together with the -o option."
-   echo " -w|--lon1 W_DEGREES                  Set the western (W) longtitude of a bounding box for"
-   echo "                                        tile downloading. -e, -n and -s should also be set."
-   echo " -e|--lon2 E_DEGREES                  Set the eastern (E) longtitude of a bounding box for"
-   echo "                                        tile downloading. -w, -n and -s should also be set."
-   echo " -n|--lat1 N_DEGREES                  Set the northern (N) latitude of a bounding box for"
-   echo "                                        tile downloading. -w, -e and -s should also be set."
-   echo " -s|--lat2 S_DEGREES                  Set the southern (S) latitude of a bounding box for"
-   echo "                                        tile downloading. -w, -e, and -n should also be set."
    echo " -p|--skip-stitching                  This option can be used together with the -w, -e, -n"
    echo "                                        and -s options, in order to just download tiles, but"
-   echo "                                        not stitch them together. The stitching can always"
-   echo "                                        done later."
+   echo "                                        not stitch them together. The stitching and"
+   echo "                                        calibration can always can be done later."
+   echo " -d|--skip-tile-downloading           This option will make the script to skip tile downloading."
+   echo "                                        Nevertheless, the script will still try to stitch and"
+   echo "                                        calibrate the downloaded tiles located in the"
+   echo "                                        corresponding 'zoom' directory."
+   echo " -c|--only-calibrate                  With this option, the script will not download nor stitch"
+   echo "                                        any tiles. It will only produce OziExplorer map"
+   echo "                                        calibration files. Use this option together with -w,"
+   echo "                                        -e, -n and -s options, to make the script aware of the"
+   echo "                                        tiles that you want to calibrate."
    echo " -t|--tile-server-provider PROVIDER   Choose one of the predefined tile server providers."
    echo "                                         Available tile server providers:"
    for (( i=0; i<${#available_providers[@]}; i++ )); do
@@ -181,6 +198,93 @@ function usage {
    echo ""
    exit 0
 }
+
+E_BADARGS=65
+
+# The horizontal or vertical resolution of the final tiles should not exceed that of the $max_resolution_px variable
+max_resolution_px=10000
+coordinates_given=0
+lon1=
+lon2=
+lat1=
+lat2=
+zoom_level=
+skip_stitching=0
+skip_tile_downloading=0
+only_calibrate=0
+project_folder="maps_project"
+
+args=$(getopt --options z:w:e:n:s:ho:pt:r:x:cd --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension:only-calibrate,skip-tile-downloading -- "$@")
+
+#if [ "$(echo "$args" | $EGREP "(^|'[[:space:]]')-z[[:space:]]")" == "" ]; then
+#       echo "\nParameter \"-z (--zoom-level)\" is mandatory.."
+#       usage
+#       exit 1
+#fi
+
+eval set -- "$args"
+
+for i
+do
+   case "$i" in
+      -z|--zoom-level) shift
+         zoom_level="$1"
+         shift
+         ;;  
+      -w|--lon1) shift
+         lon1="$1"
+         coordinates_given=1
+         shift
+         #echo "Longitude west was set to $lon1"
+         ;;  
+      -e|--lon2) shift
+         lon2="$1"
+         coordinates_given=1
+         shift
+         #echo "Longitude east was set to $lon2"
+         ;;  
+      -n|--lat1) shift
+         lat1="$1"
+         coordinates_given=1
+         shift
+         #echo "Latitude north was set to $lat1"
+         ;;  
+      -s|--lat2) shift
+         lat2="$1"
+         coordinates_given=1
+         shift
+         #echo "Latitude south was set to $lat2"
+         ;;
+      -o|--custom-osm-server) shift
+         osm_custom_server="$1"
+         shift
+         ;;
+	-x|--custom-osm-extension) shift
+         osm_custom_extension="$1"
+         shift
+         ;;
+	-t|--tile-server-provider) shift
+         provider="$1"
+         shift
+         ;;
+      -r|--tile-server-provider-overlay) shift
+         overlay="$1"
+         shift
+         ;;
+      -p|--skip-stitching) shift
+         skip_stitching=1
+         ;;
+	-d|--skip-tile-downloading) shift
+         skip_tile_downloading=1
+         ;;
+	-c|only-calibrate) shift
+	   only_calibrate=1
+	   ;;
+      -h|--help) shift
+         usage
+         ;;
+   esac
+done
 
 provider_tile_servers=
 process_provider()
@@ -229,8 +333,8 @@ process_provider()
 # http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Coordinates_to_tile_numbers_2
 #
 #   X and Y
-#      X goes from 0 (left edge is 180 °W) to 2zoom − 1 (right edge is 180 °E)
-#      Y goes from 0 (top edge is 85.0511 °N) to 2zoom − 1 (bottom edge is 85.0511 °S) in a Mercator projection
+#      X goes from 0 (left edge is 180 °W) to 2^zoom − 1 (right edge is 180 °E)
+#      Y goes from 0 (top edge is 85.0511 °N) to 2^zoom − 1 (bottom edge is 85.0511 °S) in a Mercator projection
 #   For the curious, the number 85.0511 is the result of arctan(sinh(π)). By using this bound, the entire map becomes a (very large) square.
 #
 #   https://help.openstreetmap.org/questions/37743/tile-coordinates-from-latlonzoom-formula-problem
@@ -329,82 +433,127 @@ compare_nums()
    return $return_code
 }
 
-E_BADARGS=65
+convert_to_degrees()
+{
+   decimal_coord="$1"
+   orientation="$2"
+   
+   awk -v d="$decimal_coord" -v o="$orientation" '
+   function abs(x){
+	return ((x < 0.0) ? -x : x)
+   }
+   
+   function orientation(x, orient){
+	if (o == "N" || o == "S")
+	   return ((x < 0.0) ? "S" : "N")
+	else if (o == "W" || o == "E")
+	   return ((x < 0.0) ? "W" : "E")
+   }
+   
+   BEGIN {
+	abs_d=abs(d)
+	orient=orientation(d)
+	
+	printf "%3d %12.9f %s", abs_d, (abs_d-int(abs_d))*60, orientation(d, o)
+   }'
+}
 
-download_tiles=0
-lon1=
-lon2=
-lat1=
-lat2=
-zoom_level=
-skip_stitching=0
+generate_OZI_map_file()
+{
+   filename="$1"
+   extension="$2"
+   width="$3"
+   height="$4"
+   zoom="$5"
 
-args=$(getopt --options z:w:e:n:s:ho:pt:r:x: --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension: -- "$@")
+   North="$6"
+   West="$7"
+   East="$8"
+   South="$9"
 
-#if [ "$(echo "$args" | $EGREP "(^|'[[:space:]]')-z[[:space:]]")" == "" ]; then
-#       echo "\nParameter \"-z (--zoom-level)\" is mandatory.."
-#       usage
-#       exit 1
-#fi
+   # HOW TO CALCULATE MMB1
+   # From the official documentation: http://www.oziexplorer3.com/eng/help/map_file_format.html
+   #   The scale of the image meters/pixel, its calculated in the left / right image direction.
+   #   ***It is calculated each time OziExplorer is run, the value in the file is used when searching for maps of "more detailed" scale.***
+   #
+   # So obviously, this value is not affecting the positioning since it is recalculated when the file is loaded.
+   # Nevertheless, here is the way to calculate it:
+   #
+   # The earth is a "almost" a perfect sphere and the equatorial circumference of the earth is 40075017m (that's the maximum).
+   # However, at different latitudes the circumference changes.
+   # When we use degrees for latitude representation, the circumference at any given latitude from -90 deg to +90 deg can be
+   # calculated with the following formula:
+   #              40075017*cos(lat/180*pi)
+   #
+   #              At the equator it will always be max the latitude is zero and the cos of 0 is 1.
+   #              At the poles the latitude is +-90 degrees, and the "lat/180*pi" becomes +-0.5 and the cos of +-0.5 is 0.
+   #              At any other latitude, the circumference will get values in between.
+   #
+   # Each tile in OSM is 256x256px and each complete map is composed from 2^zoom_level tiles.
+   # Consequently, the width/height of the whole globe given in pixels, for each zoom_level is 256*2^zoom_level.
+   # Eventually, the size of each pixel at different latitudes is given by this formula:
+   #         40075017*cos(lat/180*pi)/(256*2^zoom_level.)
+   #            or
+   #         40075017*cos(lat/180*pi)/*2^(zoom_level+8)
+   #
+   # Since each tile covers a range of longtitudes and latitudes, we need to find the latitude in the middle of the tile
+   # and calculate the MMB1 value based on this.
+   lat_mid_of_tile=$(awk -v s=$South -v n=$North 'BEGIN {printf "%.9f", s + (n - s)/2}')
+   MMB1=$(awk -v pi=3.14159265358979323846 'BEGIN {printf "%.9f\n", 40075017*cos('$lat_mid_of_tile'/180*pi)/2^('$zoom'+8)}')
 
-eval set -- "$args"
+   N=( $(convert_to_degrees "$North" "N") )
+   W=( $(convert_to_degrees "$West" "W") )
+   E=( $(convert_to_degrees "$East" "E") )
+   S=( $(convert_to_degrees "$South" "S") )
 
-for i
-do
-   case "$i" in
-      -z|--zoom-level) shift
-         zoom_level="$1"
-         shift
-         ;;  
-      -w|--lon1) shift
-         lon1="$1"
-         download_tiles=1
-         shift
-         #echo "Longitude west was set to $lon1"
-         ;;  
-      -e|--lon2) shift
-         lon2="$1"
-         download_tiles=1
-         shift
-         #echo "Longitude east was set to $lon2"
-         ;;  
-      -n|--lat1) shift
-         lat1="$1"
-         download_tiles=1
-         shift
-         #echo "Latitude north was set to $lat1"
-         ;;  
-      -s|--lat2) shift
-         lat2="$1"
-         download_tiles=1
-         shift
-         #echo "Latitude south was set to $lat2"
-         ;;
-      -o|--custom-osm-server) shift
-         osm_custom_server="$1"
-         shift
-         ;;
-	-x|--custom-osm-extension) shift
-         osm_custom_extension="$1"
-         shift
-         ;;
-	-t|--tile-server-provider) shift
-         provider="$1"
-         shift
-         ;;
-      -r|--tile-server-provider-overlay) shift
-         overlay="$1"
-         shift
-         ;;
-      -p|--skip-stitching) shift
-         skip_stitching=1
-         ;;
-      -h|--help) shift
-         usage
-         ;;
-   esac
-done
+   w="$(printf %5s $(( $width - 1 )))"
+   h="$(printf %5s $(( $height - 1 )))"
+   # z (zero) is only added here for the sake of having well aligned code :)
+   z="$(printf %5s 0)"
 
+   echo "OziExplorer Map Data File Version 2.2
+$filename
+$filename.$extension
+1,Map Code,
+WGS 84,WGS 84,   0.0000,   0.0000,WGS 84
+Reserved 1
+Reserved 2
+Magnetic Variation,,,E
+Map Projection,Mercator,PolyCal,No,AutoCalOnly,No,BSBUseWPX,No
+Point01,xy, $z, $z, in, deg, ${N[0]}, ${N[1]}, ${N[2]}, ${W[0]}, ${W[1]}, ${W[2]}, grid,   , , ,N
+Point02,xy, $w, $h, in, deg, ${S[0]}, ${S[1]}, ${S[2]}, ${E[0]}, ${E[1]}, ${E[2]}, grid,   , , ,N
+Point03,xy, $w, $z, in, deg, ${N[0]}, ${N[1]}, ${N[2]}, ${E[0]}, ${E[1]}, ${E[2]}, grid,   , , ,N
+Point04,xy, $z, $h, in, deg, ${S[0]}, ${S[1]}, ${S[2]}, ${W[0]}, ${W[1]}, ${W[2]}, grid,   , , ,N
+Projection Setup,,,,,,,,,,m
+Map Feature = MF ; Map Comment = MC     These follow if they exist
+Track File = TF      These follow if they exist
+Moving Map Parameters = MM?    These follow if they exist
+MM0,Yes
+MMPNUM,4
+MMPXY,1,0,0
+MMPXY,2,$width,0
+MMPXY,3,$width,$height
+MMPXY,4,0,$height
+MMPLL,1, $West, $North
+MMPLL,2, $East, $North
+MMPLL,3, $East, $South
+MMPLL,4, $West, $South
+MM1B,$MMB1
+LL Grid Setup
+LLGRID,No,No Grid,Yes,255,16711680,0,No Labels,0,16777215,7,1,Yes,x
+Other Grid Setup
+GRGRID,No,No Grid,Yes,255,16711680,No Labels,0,16777215,8,1,Yes,No,No,x
+MOP,Map Open Position,0,0
+IWH,Map Image Width/Height,$width,$height"
+}
+
+########################################
+# Process the user provided arguments. #
+########################################
+
+###################################################################
+# 1. check if the zoom level has been provided. This is mandatory.#
+###################################################################
 if [[ -z $zoom_level ]]; then
    echo "Please provide the OpenStreetMap zoom level with the '-z' option."
    exit $E_BADARGS
@@ -417,15 +566,14 @@ else
    fi
 fi
 
-# TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
-#       Update the readme at the top of this file and the README.md file.
-#       Implement automatic calibration for OziExplorer.
-#       Make subroutines for the stitching functionality?
-
-#####################################################################
-# If at least one coordinate has been given, try to download tiles. #
-#####################################################################
-if [[ $download_tiles -eq 1 ]]; then
+############################################################################
+# 2. Check if the coordinates havebeen provided. This is mandatory.        #
+# If at least one coordinate has been given, then process the coordinates. #
+############################################################################
+if [[ $coordinates_given -ne 1 ]]; then
+   echo "Please provide the coordinates that you want to process. (-w, -e, -n and -s options)"
+   exit $E_BADARGS
+else
    # If one coordinate has been given, then all of the coordinates should have been given.
    if [[ -z $lon1 || -z $lon2 || -z $lat1 || -z $lat2 ]]; then
 	echo "If you provide coordinates for tile downloading, you need to provide all 4 coordinates:"
@@ -491,7 +639,21 @@ if [[ $download_tiles -eq 1 ]]; then
    
    # echo $(xtile2long $tile_west $zoom_level) $(xtile2long $tile_east $zoom_level)
    # echo $(ytile2lat $tile_north $zoom_level) $(ytile2lat $tile_south $zoom_level)
+fi
 
+# When we download files, we download from $tile_west to $tile_east inclusive.
+# That's why the horizontal and vertical tiles are the '($tile_east - $tile_west) + 1'.
+# The same goes for North and South
+number_of_horizontal_tiles=$(( ($tile_east - $tile_west) + 1 ))
+number_of_vertical_tiles=$(( ( $tile_south - $tile_north ) + 1 ))
+
+
+#############################################
+# Start the tile downloading procedure here #
+#############################################
+if [[ $skip_tile_downloading -eq 1 || $only_calibrate -eq 1 ]]; then
+   echo "Skipping tile downloading as requested..."
+else
    # If a tile provider has not been chosen....
    if [[ -z "$provider" ]]; then
 	# And if the user has not provided any custom tile server....
@@ -540,16 +702,16 @@ if [[ $download_tiles -eq 1 ]]; then
    # echo "$ext"
    
    # Eventually download the tiles.
-   total_tiles_to_download=$(( (($tile_east - $tile_west) + 1) * (( $tile_south - $tile_north ) + 1) ))
+   total_tiles_to_download=$(( $number_of_horizontal_tiles * $number_of_vertical_tiles ))
    downloading_now=0
    successfully_downloaded=0
-   parallel_downloads=30
+   parallel_downloads=100
    #set -x
    echo "Started downloading on "$(date) > $zoom_level.log
    echo "Downloading $total_tiles_to_download tiles."
    declare -A pid_array=()
    for (( lon=$tile_west; lon<=$tile_east; lon++)); do
-      mkdir -p mkdir "$zoom_level/$lon"
+      mkdir -p "$zoom_level/$lon"
       for (( lat=$tile_north; lat<=$tile_south; lat++)); do
          (( ++downloading_now ))
          # If more than one tile server is provided, use all of the tile servers in a round robin fashion.
@@ -599,8 +761,28 @@ if [[ $download_tiles -eq 1 ]]; then
             (( successfully_downloaded++ ))
          fi
          
+         # If the last tile is downloading, then wait for all the background processes to complete.
+         if [[ $lon -eq $tile_east && $lat -eq $tile_south ]]; then
+		while [[ ${#pid_array[@]} -gt 0 ]]; do
+		   for i in ${!pid_array[@]}; do
+			ps $i > /dev/null
+			exit_status=$?
+			if [[ $exit_status -ne 0 ]]; then
+			   wait $i
+			   exit_status=$?
+			   if [[ $exit_status -eq 0 ]]; then
+				(( successfully_downloaded++ ))
+			   else
+				echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> $zoom_level.log
+			   fi
+			   unset "pid_array[$i]"
+			fi
+		   done
+		done
+	   fi
       done
    done
+   
    echo "Finished downloading on "$(date) >> $zoom_level.log
    
    problems_occured=$(( $total_tiles_to_download - $successfully_downloaded ))
@@ -614,110 +796,22 @@ if [[ $download_tiles -eq 1 ]]; then
    fi
 fi
 
-if [[ $skip_stitching -eq 1 ]]; then
-   echo "Skipping stitching."
-   if [[ $download_tiles -ne 1 ]]; then
-      echo "The option --skip-stitching only makes sense to use when downloading tiles... :/"
-      echo "Skipping stitching anyway..."
-   fi
-   exit 0
-fi
 
-######################################
-# Start the stitching procedure here #
-######################################
-if [[ -d "$zoom_level" ]]; then
-   stitches_folder="$(pwd)/stitches/$zoom_level"
-   stitches_folder_final="$stitches_folder/../final/$zoom_level/"
-   if [[ -d "$stitches_folder" ]]; then
-      echo "Folder '$stitches_folder' already exists. Do you want to delete the folder's contents and recreate all of the tiles?"
-      echo "If you do not delete the folder, existing tiles will not be regenerated."
-      echo ""
-      echo "Delete folder content's? (y/N) "
-      read answer
-      if [[ "${answer,,}" == "y" ]]; then
-         rm -rf "$stitches_folder/"*
-      fi
-   else
-      mkdir -p "$stitches_folder"
-   fi
-   mkdir -p "$stitches_folder_final"
-else
-   echo "Zoom level folder '$zoom_level' does not exist."
-   exit 1
-fi
+################################################
+# Calculate the resolution of the final images #
+################################################
+# Each large, final tile generated by the smaller OSM extracted tiles, should
+# not exceed the 'max_resolution_px' variable, and all of the generated tiles
+# should have the same height/width.
 
-files_per_folder=
-filenames_in_folder=()
-total_folders_to_be_processed=$(ls -U $zoom_level | wc -l)
-ext=
-
-####################################
-# Step 1: Make some sanity checks. #
-####################################
-# Find how many files exist for all the subdirectories in the zoom level.
-# All the subdirectories should contain the same number of files with the same filenames.
-for folder in $(ls -U $zoom_level | sort -n); do   
-   full_path_folder="$(pwd)/$zoom_level"/"$folder"
-
-   files_in_folder=$(ls -U "$full_path_folder" | wc -l)
-   # On the first round in the for loop, $files_per_folder = blank (-z returns true)
-   if [[ -z $files_per_folder ]]; then
-      # If it is the first round in the loop
-      files_per_folder=$files_in_folder
-      for filename in $(ls -U "$full_path_folder" | sort -n); do
-         if [[ -z $ext ]]; then
-            ext="$(echo "$filename" | rev | cut -d. -f1 | rev)"
-         else
-            if [[ "$(echo "$filename" | rev | cut -d. -f1 | rev)" != "$ext" ]]; then
-               # If you find different extensions in a folder, then exit.
-               echo "ERROR: '$filename' does not match default extension '$ext'"
-               echo "       All the files in $full_path_folder must have the same extension."
-               exit 1
-            fi
-         fi
-         filenames_in_folder+=( "$filename" )
-      done
-   else
-      if [[ $files_in_folder -ne $files_per_folder ]]; then
-         echo "First folder had $files_per_folder files in it."
-         echo "Folder "$full_path_folder" has $files_in_folder files."
-         echo "All the folders should have the same amount of files."
-         exit 1
-      else
-         for (( i=0; i<${#filenames_in_folder[@]}; i++ )); do
-            if [[ ! -f "$full_path_folder/${filenames_in_folder[$i]}" ]]; then
-               echo "$filename"" is expected to be found in folder ""$full_path_folder"" but it doesn't look like it is there.'"
-               echo "Please make sure that you have downloaded a big square tile from OpenStreeMap."
-               exit 1
-            fi
-         done
-      fi
-   fi
-done
-
-# echo ${files_in_folder[@]}
-# echo ${filenames_in_folder[@]}
-
-#############################################
-# Step 2: Process the vertical tiles first. #
-#############################################
-# The vertical resolution of each large tile generated by the smaller OSM extracted tiles,
-# should not exceed the 'max_resolution_px' variable, and all of the generated tiles should
-# have the same height.
-
-###########
-# Step 2.1: 
-###########
 # The initial 'vertical_resolution_per_stitch' is the total vertical resolution of all the
-# images combined. This might be a very large image, so we want to find the a divisor that
-# will give the least number of equally sized vertical crops, while the vertical resolution
-# of each crop does not exceed 'max_resolution_px'.
-vertical_resolution_per_stitch=$(( 256 * $files_per_folder ))
+# tiles in y axis combined. This might be a very large image, so we want to find the a
+# divisor that will give the least number of equally sized vertical crops, while the
+# vertical resolution of each crop does not exceed 'max_resolution_px'.
+vertical_resolution_per_stitch=$(( 256 * $number_of_vertical_tiles ))
 vertical_divide_by=1
-# The next 'while' loop divides the total
 while [[ $vertical_resolution_per_stitch -gt $max_resolution_px ]]; do
-	# Find which exact division gives a number less or equal to 20000.
+	# Find which exact division gives a number less or equal to 'max_resolution_px'.
 	temp=$(( $vertical_resolution_per_stitch / $vertical_divide_by ))
 	temp2=$(( $temp * $vertical_divide_by ))
 	# If $temp2 -ne $vertical_resolution_per_stitch, then the division is not exact.
@@ -732,260 +826,390 @@ while [[ $vertical_resolution_per_stitch -gt $max_resolution_px ]]; do
 	fi
 done
 
-###########
-# Step 2.2:
-###########
-# Once we have the vertical resolution divisor (it can also be 1 if there is no division needs to be done)
-# We have to find which of the original OSM tiles (256x256 pixels each) will compose each of the larger tiles.
-# Some of the original OSM tiles might have to be splitted and used by two of the larger tiles that we are
-# going to generate.
-pixels=0
-current_file=0
-# Initialize some dynamically named arrays to store the crop rules (how much each of the generated vertical
-# tiles needs to be cropped) and the filenames of the original OSM tiles that will be part of each of the
-# generated tiles.
-for (( i=0; i<$vertical_divide_by; i++ )); do
-   eval "files_stitch_$i=()"
-   eval "crop_rules_stitch_$i=()"
-done
-
-# The top-most stitch do not need a top crop and the bottom-most stitch do not need a bottom crop (since
-# the chosen divisor divides the vertical size equally), so initialize with zero value.
-crop_rules_stitch_0[0]=0
-eval "crop_rules_stitch_$(( $vertical_divide_by-1 ))[1]=0"
-
-for (( i=0; i<$vertical_divide_by; i++ )); do
-   # echo "i: "$i
-   # Each small tile is 256 pixels,
-   while (( $pixels < ($i + 1) * $vertical_resolution_per_stitch )); do
-      #echo $current_file
-      # Add the filenames for each vertical stitch in an array.
-      eval "files_stitch_$i+=( ${filenames_in_folder[$current_file]} )"
-      if (( $i - 1 < 0 )); then
-         array_index=$current_file
-      else
-         i_minus_1=$(( $i - 1 ))
-         eval "temp_array_index=\${#files_stitch_$i_minus_1[@]}"
-         array_index=$(( $current_file - $temp_array_index * $i ))
-      fi
-      #eval "echo \${files_stitch_$i[$array_index]}"
-      
-      let "pixels += 256 - pixels % 256"
-      #echo $pixels
-      let "current_file++"
-   done
-   
-   # Store in the first element ([0]) of the crop array, the value that each of the
-   # generated vertical tiles will need to be cropped by from the top.
-   # Store in the second element ([1]) of the crop array, the value that each of the
-   # generated vertical tiles will need to be cropped by from the bottom (although
-   # we do not really use this value later).
-   crop=$(( $pixels-($i + 1) * $vertical_resolution_per_stitch ))
-   eval "crop_rules_stitch_$i[1]=$crop"
-   if (( $i + 1 < $vertical_divide_by )); then
-      if (( $crop > 0 )); then
-         eval "crop_rules_stitch_$((i + 1))[0]=$((256-$crop))"
-      else
-         eval "crop_rules_stitch_$((i + 1))[0]=0"
-      fi
-   fi
-   if (( $pixels > ($i + 1) * $vertical_resolution_per_stitch )); then
-      let "pixels-=pixels-(i + 1)*vertical_resolution_per_stitch"
-      let "current_file--"
-   fi
-done
-
-# echo ${files_stitch_0[@]}
-# echo ${#files_stitch_0[@]}
-# echo ${files_stitch_1[@]}
-# echo ${#files_stitch_1[@]}
-# echo ${files_stitch_2[@]}
-# echo ${#files_stitch_2[@]}
-# echo ${files_stitch_3[@]}
-# echo ${#files_stitch_3[@]}
-# echo ${files_stitch_4[@]}
-# echo ${#files_stitch_4[@]}
-# echo ${files_stitch_5[@]}
-# echo ${#files_stitch_5[@]}
-# echo ${files_stitch_6[@]}
-# echo ${#files_stitch_6[@]}
-# echo ${files_stitch_7[@]}
-# echo ${#files_stitch_7[@]}
-# 
-# echo ${crop_rules_stitch_0[@]}
-# echo ${crop_rules_stitch_1[@]}
-# echo ${crop_rules_stitch_2[@]}
-# echo ${crop_rules_stitch_3[@]}
-# echo ${crop_rules_stitch_4[@]}
-# echo ${crop_rules_stitch_5[@]}
-# echo ${crop_rules_stitch_6[@]}
-# echo ${crop_rules_stitch_7[@]}
-
-###########
-# Step 2.3:
-###########
-# Eventually use graphicsmagick to stich and crop the vertical tiles as needed.
-# This step will create many "thin" vertical tiles (256px wide) but very long (up to 'max_resolution_px' height).
-count=0
-for folder in $(ls $zoom_level); do
-   #eval "items_in_array=\${#files_stitch_$i[@]}"
-   let "count++"
-   echo "Processing vertical tiles in folder "./$zoom_level/$folder" (progress: $count/$total_folders_to_be_processed)"
-   for (( i=0; i<$vertical_divide_by; i++ )); do
-      eval "files_stitch_$i_$folder=( \${files_stitch_$i[@]/#/$(pwd)\/$zoom_level\/$folder\/} )"
-      #eval "echo \${files_stitch_$i_$folder[@]}"
-      eval "crop_from_top=\${crop_rules_stitch_$i[0]}"
-   
-      filename_to_save="$stitches_folder/"$folder"_"$i".png"
-      
-      # If the file does not exist, or the file is not corrupted (it can be properly read by the 'identify' command)
-      # or the height is not as needed ($vertical_resolution_per_stitch), then (re)-generate the file.
-      if [[ ! -f "$filename_to_save" || ! $(identify "$filename_to_save") || $(identify -format "%h" "$filename_to_save") -ne $vertical_resolution_per_stitch ]]; then
-         echo "Building '$(readlink -f "$filename_to_save")'"
-         # There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
-         # So use imagemagick when stitching jpg files from MapQuest.
-         if [[ "$ext" == "jpg" ]]; then
-            eval "montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
-            convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
-         else
-            eval "gm montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
-            #eval "echo gm montage \${files_stitch_$i_$folder[@]} -tile 1x\${#files_stitch_$i_$folder[@]}  -geometry +0+0 $filename_to_save"
-            #echo 'identify -format "%h" "$filename_to_save"' $(identify -format "%h" "$filename_to_save")
-            #echo $vertical_resolution_per_stitch
-            #echo 'gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"' "-crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save")"
-            gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
-         fi
-      fi
-   done
-done
-
-########################################
-# Step 3: Process the horizontal tiles #
-########################################
-# At this point we have many "thin" vertical tiles (256px wide) but very long (up to 'max_resolution_px' height).
-# Now we have to merge them in rows, in order to generate the final tiles.
-# We follow exactly the same steps that we followed in "Step 2", but for the horizontal length.
-
-# The total horizontal resolution is given by the number of folders located under the "$zoom_level" folder
-horizontal_resolution_per_stitch=$(( 256 * $(ls -U $zoom_level | wc -l) ))
-
-###########
-# Step 3.1:
-###########
+# The total horizontal resolution is given by the number of tiles in x axis.
+horizontal_resolution_per_stitch=$(( 256 * $number_of_horizontal_tiles ))
 horizontal_divide_by=1
-# The next 'while' loop divides the total
 while [[ $horizontal_resolution_per_stitch -gt $max_resolution_px ]]; do
-        # Find which exact division gives a number less or equal to 20000.
-        temp=$(( $horizontal_resolution_per_stitch / $horizontal_divide_by ))
-        temp2=$(( $temp * $horizontal_divide_by ))
-        # If $temp2 -ne $horizontal_resolution_per_stitch, then the division is not exact.
-        if [[ $temp2 -ne $horizontal_resolution_per_stitch ]]; then
-                let "horizontal_divide_by++"
-        else
-                if [[ $temp -le $max_resolution_px ]]; then
-                        horizontal_resolution_per_stitch=$temp
-                else
-                        let "horizontal_divide_by++"
-                fi
-        fi
+	# Find which exact division gives a number less or equal to 'max_resolution_px'
+	temp=$(( $horizontal_resolution_per_stitch / $horizontal_divide_by ))
+	temp2=$(( $temp * $horizontal_divide_by ))
+	# If $temp2 -ne $horizontal_resolution_per_stitch, then the division is not exact.
+	if [[ $temp2 -ne $horizontal_resolution_per_stitch ]]; then
+		   let "horizontal_divide_by++"
+	else
+		   if [[ $temp -le $max_resolution_px ]]; then
+				horizontal_resolution_per_stitch=$temp
+		   else
+				let "horizontal_divide_by++"
+		   fi
+	fi
 done
 
-###########
-# Step 3.2:
-###########
 
-count=0
-for (( j=0; j<$vertical_divide_by; j++ )); do
+######################################
+# Start the stitching procedure here #
+######################################
+# If the user wants to skip the stitching and hasn't asked for file calibration, then exit the program here.
+if [[ $skip_stitching -eq 1 || $only_calibrate -eq 1 ]]; then
+   echo "Skipping stitching as requested..."
+else
+   # If we are running here, the user hasn't asked to skip the stitching. However,
+   # if the user has asked to calibrate the files only, we still need to skip stitching.
+   echo ""
+   echo "Starting the stitching procedure..."
+   echo ""
+   if [[ -d "$zoom_level" ]]; then
+	stitches_folder="$(pwd)/stitches/$zoom_level"
+	stitches_folder_final="$stitches_folder/../final/$zoom_level/"
+	if [[ -d "$stitches_folder" ]]; then
+	   echo "Folder '$stitches_folder' already exists. Do you want to delete the folder's contents and recreate all of the tiles?"
+	   echo "If you do not delete the folder, existing tiles will not be regenerated."
+	   echo ""
+	   echo "Delete folder content's? (y/N) "
+	   read answer
+	   if [[ "${answer,,}" == "y" ]]; then
+		rm -rf "$stitches_folder/"*
+	   fi
+	else
+	   mkdir -p "$stitches_folder"
+	fi
+	mkdir -p "$stitches_folder_final"
+   else
+	echo "Zoom level folder '$zoom_level' does not exist."
+	exit 1
+   fi
 
+   files_per_folder=
    filenames_in_folder=()
-   for filename in $(ls -U "$stitches_folder/" | sort -n | grep "_$j.png"); do
-      filenames_in_folder+=( "$filename" )
+   total_folders_to_be_processed=$(ls -U $zoom_level | wc -l)
+   ext=
+
+   ####################################
+   # Step 1: Make some sanity checks. #
+   ####################################
+   # Find how many files exist for all the subdirectories in the zoom level.
+   # All the subdirectories should contain the same number of files with the same filenames.
+   for folder in $(ls -U $zoom_level | sort -n); do   
+	full_path_folder="$(pwd)/$zoom_level"/"$folder"
+
+	files_in_folder=$(ls -U "$full_path_folder" | wc -l)
+	# On the first round in the for loop, $files_per_folder = blank (-z returns true)
+	if [[ -z $files_per_folder ]]; then
+	   # If it is the first round in the loop
+	   files_per_folder=$files_in_folder
+	   for filename in $(ls -U "$full_path_folder" | sort -n); do
+		if [[ -z $ext ]]; then
+		   ext="$(echo "$filename" | rev | cut -d. -f1 | rev)"
+		else
+		   if [[ "$(echo "$filename" | rev | cut -d. -f1 | rev)" != "$ext" ]]; then
+			# If you find different extensions in a folder, then exit.
+			echo "ERROR: '$filename' does not match default extension '$ext'"
+			echo "       All the files in $full_path_folder must have the same extension."
+			exit 1
+		   fi
+		fi
+		filenames_in_folder+=( "$filename" )
+	   done
+	else
+	   if [[ $files_in_folder -ne $files_per_folder ]]; then
+		echo "First folder had $files_per_folder files in it."
+		echo "Folder "$full_path_folder" has $files_in_folder files."
+		echo "All the folders should have the same amount of files."
+		exit 1
+	   else
+		for (( i=0; i<${#filenames_in_folder[@]}; i++ )); do
+		   if [[ ! -f "$full_path_folder/${filenames_in_folder[$i]}" ]]; then
+			echo "$filename"" is expected to be found in folder ""$full_path_folder"" but it doesn't look like it is there.'"
+			echo "Please make sure that you have downloaded a big square tile from OpenStreeMap."
+			exit 1
+		   fi
+		done
+	   fi
+	fi
    done
-   
+
+   # echo ${files_in_folder[@]}
+   # echo ${filenames_in_folder[@]}
+
+   #############################################
+   # Step 2: Process the vertical tiles first. #
+   #############################################
+
+   ###########
+   # Step 2.1:
+   ###########
+   # Once we have the vertical resolution divisor (it can also be 1 if there is no division needs to be done)
+   # We have to find which of the original OSM tiles (256x256 pixels each) will compose each of the larger tiles.
+   # Some of the original OSM tiles might have to be splitted and used by two of the larger tiles that we are
+   # going to generate.
    pixels=0
    current_file=0
-
-   for (( i=0; i<$horizontal_divide_by; i++ )); do
-      eval "files_stitch_$i=()"
-      eval "crop_rules_stitch_$i=()"
+   # Initialize some dynamically named arrays to store the crop rules (how much each of the generated vertical
+   # tiles needs to be cropped) and the filenames of the original OSM tiles that will be part of each of the
+   # generated tiles.
+   for (( i=0; i<$vertical_divide_by; i++ )); do
+	eval "files_stitch_$i=()"
+	eval "crop_rules_stitch_$i=()"
    done
 
+   # The top-most stitch do not need a top crop and the bottom-most stitch do not need a bottom crop (since
+   # the chosen divisor divides the vertical size equally), so initialize with zero value.
    crop_rules_stitch_0[0]=0
-   eval "crop_rules_stitch_$(( $horizontal_divide_by-1 ))[1]=0"
+   eval "crop_rules_stitch_$(( $vertical_divide_by-1 ))[1]=0"
 
-   for (( i=0; i<$horizontal_divide_by; i++ )); do
-      # echo "i: "$i
-      # Each tile is 256 pixels wide,
-      while (( $pixels < ($i + 1) * $horizontal_resolution_per_stitch )); do
-         #echo $current_file
-         # Add the filenames for each horizontal stitch in an array.
-         eval "files_stitch_$i+=( ${filenames_in_folder[$current_file]} )"
-         if (( $i - 1 < 0 )); then
-            array_index=$current_file
-         else
-            i_minus_1=$(( $i - 1 ))
-            eval "temp_array_index=\${#files_stitch_$i_minus_1[@]}"
-            array_index=$(( $current_file - $temp_array_index * $i ))
-         fi
-         #eval "echo \${files_stitch_$i[$array_index]}"
-         
-         let "pixels += 256 - pixels % 256"
-         #echo $pixels
-         let "current_file++"
-      done
-      
-      crop=$(( $pixels-($i + 1) * $horizontal_resolution_per_stitch ))
-      #echo "crop: $crop"
-      eval "crop_rules_stitch_$i[1]=$crop"
-      if (( $i + 1 < $horizontal_divide_by )); then
-         if (( $crop > 0 )); then
-            eval "crop_rules_stitch_$((i + 1))[0]=$((256-$crop))"
-         else
-            eval "crop_rules_stitch_$((i + 1))[0]=0"
-         fi
-      fi
-      if (( $pixels > ($i + 1) * $horizontal_resolution_per_stitch )); then
-         let "pixels-=pixels-(i + 1)*horizontal_resolution_per_stitch"
-         let "current_file--"
-      fi
+   for (( i=0; i<$vertical_divide_by; i++ )); do
+	# echo "i: "$i
+	# Each small tile is 256 pixels,
+	while (( $pixels < ($i + 1) * $vertical_resolution_per_stitch )); do
+	   #echo $current_file
+	   # Add the filenames for each vertical stitch in an array.
+	   eval "files_stitch_$i+=( ${filenames_in_folder[$current_file]} )"
+	   if (( $i - 1 < 0 )); then
+		array_index=$current_file
+	   else
+		i_minus_1=$(( $i - 1 ))
+		eval "temp_array_index=\${#files_stitch_$i_minus_1[@]}"
+		array_index=$(( $current_file - $temp_array_index * $i ))
+	   fi
+	   #eval "echo \${files_stitch_$i[$array_index]}"
+	   
+	   let "pixels += 256 - pixels % 256"
+	   #echo $pixels
+	   let "current_file++"
+	done
+	
+	# Store in the first element ([0]) of the crop array, the value that each of the
+	# generated vertical tiles will need to be cropped by from the top.
+	# Store in the second element ([1]) of the crop array, the value that each of the
+	# generated vertical tiles will need to be cropped by from the bottom (although
+	# we do not really use this value later).
+	crop=$(( $pixels-($i + 1) * $vertical_resolution_per_stitch ))
+	eval "crop_rules_stitch_$i[1]=$crop"
+	if (( $i + 1 < $vertical_divide_by )); then
+	   if (( $crop > 0 )); then
+		eval "crop_rules_stitch_$((i + 1))[0]=$((256-$crop))"
+	   else
+		eval "crop_rules_stitch_$((i + 1))[0]=0"
+	   fi
+	fi
+	if (( $pixels > ($i + 1) * $vertical_resolution_per_stitch )); then
+	   let "pixels-=pixels-(i + 1)*vertical_resolution_per_stitch"
+	   let "current_file--"
+	fi
    done
 
+   # echo ${files_stitch_0[@]}
+   # echo ${#files_stitch_0[@]}
+   # echo ${files_stitch_1[@]}
+   # echo ${#files_stitch_1[@]}
+   # echo ${files_stitch_2[@]}
+   # echo ${#files_stitch_2[@]}
+   # echo ${files_stitch_3[@]}
+   # echo ${#files_stitch_3[@]}
+   # echo ${files_stitch_4[@]}
+   # echo ${#files_stitch_4[@]}
+   # echo ${files_stitch_5[@]}
+   # echo ${#files_stitch_5[@]}
+   # echo ${files_stitch_6[@]}
+   # echo ${#files_stitch_6[@]}
+   # echo ${files_stitch_7[@]}
+   # echo ${#files_stitch_7[@]}
+   # 
+   # echo ${crop_rules_stitch_0[@]}
+   # echo ${crop_rules_stitch_1[@]}
+   # echo ${crop_rules_stitch_2[@]}
+   # echo ${crop_rules_stitch_3[@]}
+   # echo ${crop_rules_stitch_4[@]}
+   # echo ${crop_rules_stitch_5[@]}
+   # echo ${crop_rules_stitch_6[@]}
+   # echo ${crop_rules_stitch_7[@]}
+
    ###########
-   # Step 3.3:
+   # Step 2.2:
+   ###########
+   # Eventually use graphicsmagick to stich and crop the vertical tiles as needed.
+   # This step will create many "thin" vertical tiles (256px wide) but very long (up to 'max_resolution_px' height).
+   count=0
+   for folder in $(ls $zoom_level); do
+	#eval "items_in_array=\${#files_stitch_$i[@]}"
+	let "count++"
+	echo "Processing vertical tiles in folder "./$zoom_level/$folder" (progress: $count/$total_folders_to_be_processed)"
+	for (( i=0; i<$vertical_divide_by; i++ )); do
+	   eval "files_stitch_$i"_"$folder=( \${files_stitch_$i[@]/#/$(pwd)\/$zoom_level\/$folder\/} )"
+	   eval "crop_from_top=\${crop_rules_stitch_$i[0]}"
+	
+	   filename_to_save="$stitches_folder/"$folder"_"$i".png"
+	   
+	   # If the file does not exist, or the file is not corrupted (it can be properly read by the 'identify' command)
+	   # or the height is not as needed ($vertical_resolution_per_stitch), then (re)-generate the file.
+	   if [[ ! -f "$filename_to_save" || ! $(identify "$filename_to_save") || $(identify -format "%h" "$filename_to_save") -ne $vertical_resolution_per_stitch ]]; then
+		echo "Building '$(readlink -f "$filename_to_save")'"
+		# There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
+		# So use imagemagick when stitching jpg files from MapQuest.
+		if [[ "$ext" == "jpg" ]]; then
+		   eval "montage \${files_stitch_$i"_"$folder[@]} -tile 1x\${#files_stitch_$i"_"$folder[@]}  -geometry +0+0 $filename_to_save"
+		   convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+		else
+		   eval "gm montage \${files_stitch_$i"_"$folder[@]} -tile 1x\${#files_stitch_$i"_"$folder[@]}  -geometry +0+0 $filename_to_save"
+
+		   gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+		fi
+	   fi
+	done
+   done
+
+   ########################################
+   # Step 3: Process the horizontal tiles #
+   ########################################
+   # At this point we have many "thin" vertical tiles (256px wide) but very long (up to 'max_resolution_px' height).
+   # Now we have to merge them in rows, in order to generate the final tiles.
+   # We follow exactly the same steps that we followed in "Step 2", but for the horizontal length.
+
+   ###########
+   # Step 3.1:
    ###########
 
-   #eval "items_in_array=\${#files_stitch_$i[@]}"
-   for (( i=0; i<$horizontal_divide_by; i++ )); do
-      let "count++"
-      echo "Processing final tiles for row "$j", column "$i" (progress: $count/$(( $vertical_divide_by * $horizontal_divide_by )))"
-      
-      eval "files_stitch_$j_$i=( \${files_stitch_$i[@]/#/$stitches_folder\/} )"
-      #eval "echo \${files_stitch_$j_$i[@]}"
-      eval "crop_from_left=\${crop_rules_stitch_$i[0]}"
+   count=0
+   for (( j=0; j<$vertical_divide_by; j++ )); do
+
+	filenames_in_folder=()
+	for filename in $(ls -U "$stitches_folder/" | sort -n | grep "_$j.png"); do
+	   filenames_in_folder+=( "$filename" )
+	done
+	
+	pixels=0
+	current_file=0
+
+	for (( i=0; i<$horizontal_divide_by; i++ )); do
+	   eval "files_stitch_$i=()"
+	   eval "crop_rules_stitch_$i=()"
+	done
+
+	crop_rules_stitch_0[0]=0
+	eval "crop_rules_stitch_$(( $horizontal_divide_by-1 ))[1]=0"
+
+	for (( i=0; i<$horizontal_divide_by; i++ )); do
+	   # echo "i: "$i
+	   # Each tile is 256 pixels wide,
+	   while (( $pixels < ($i + 1) * $horizontal_resolution_per_stitch )); do
+		#echo $current_file
+		# Add the filenames for each horizontal stitch in an array.
+		eval "files_stitch_$i+=( ${filenames_in_folder[$current_file]} )"
+		if (( $i - 1 < 0 )); then
+		   array_index=$current_file
+		else
+		   i_minus_1=$(( $i - 1 ))
+		   eval "temp_array_index=\${#files_stitch_$i_minus_1[@]}"
+		   array_index=$(( $current_file - $temp_array_index * $i ))
+		fi
+		#eval "echo \${files_stitch_$i[$array_index]}"
+		
+		let "pixels += 256 - pixels % 256"
+		#echo $pixels
+		let "current_file++"
+	   done
+	   
+	   crop=$(( $pixels-($i + 1) * $horizontal_resolution_per_stitch ))
+	   #echo "crop: $crop"
+	   eval "crop_rules_stitch_$i[1]=$crop"
+	   if (( $i + 1 < $horizontal_divide_by )); then
+		if (( $crop > 0 )); then
+		   eval "crop_rules_stitch_$((i + 1))[0]=$((256-$crop))"
+		else
+		   eval "crop_rules_stitch_$((i + 1))[0]=0"
+		fi
+	   fi
+	   if (( $pixels > ($i + 1) * $horizontal_resolution_per_stitch )); then
+		let "pixels-=pixels-(i + 1)*horizontal_resolution_per_stitch"
+		let "current_file--"
+	   fi
+	done
+
+	###########
+	# Step 3.2:
+	###########
+
+	#eval "items_in_array=\${#files_stitch_$i[@]}"
+	for (( i=0; i<$horizontal_divide_by; i++ )); do
+	   let "count++"
+	   echo "Processing final tiles for row "$j", column "$i" (progress: $count/$(( $vertical_divide_by * $horizontal_divide_by )))"
+	   
+	   eval "files_stitch_$j_$i=( \${files_stitch_$i[@]/#/$stitches_folder\/} )"
+	   #eval "echo \${files_stitch_$j_$i[@]}"
+	   eval "crop_from_left=\${crop_rules_stitch_$i[0]}"
+	
+	   filename_to_save="$stitches_folder_final/"$j"_"$i".png"
+	   
+	   # If the file does not exist, or the file is not corrupted (it can be properly read by the 'identify' command)
+	   # or the width is not as needed ($horizontal_resolution_per_stitch), then (re)-generate the file.
+	   if [[ ! -f "$filename_to_save" || $(identify -format "%w" "$filename_to_save") -ne $horizontal_resolution_per_stitch ]]; then
+		echo "Building '$(readlink -f "$filename_to_save")'"
+		# There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
+		# So use imagemagick when stitching jpg files from MapQuest.
+		if [[ "$ext" == "jpg" ]]; then
+		   eval "montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
+		
+		   convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+		else
+		   eval "gm montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
+		
+		   gm convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+		fi
+	   fi
+	done
+
+   done
+
+
+   echo ""
+   echo "$(( $vertical_divide_by * $horizontal_divide_by )) ("$horizontal_divide_by"x"$vertical_divide_by") big tiles ($horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch pixels each) were generated"
+   echo ""
+fi
+
+##############################################
+# Produce OziExplorer .map Calibration files #
+##############################################
+# If the stitching is skipped, then the user might only need to download tiles.
+# So producing map calibration files is useless, unless the user has requested
+# just map calibration.
+if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
+
+#    filename="test"
+#    extension="png"
+#    width=14336
+#    height=18432
+#    zoom=11
+# 
+#    North=72.1818
+#    West=-169.45312
+#    East=-140.09766
+#    South=56.26776
+
+   echo "Calibrating maps"
+   # http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Zoom_levels
+   # Tile size in degrees: 360/2^zoom x 170.1022/2^zoom
+   # Pixel size in degrees: (360/2^zoom x 170.1022/2^zoom)/256
+   horizontal_deg_per_px=$( awk -v z=$zoom_level 'BEGIN {printf "%.12f", 360/2^z/256 }' )
+   vertical_deg_per_px=$( awk -v z=$zoom_level 'BEGIN {printf "%.12f", 170.1022/2^z/256 }' )
    
-      filename_to_save="$stitches_folder_final/"$j"_"$i".png"
-      
-      # If the file does not exist, or the file is not corrupted (it can be properly read by the 'identify' command)
-      # or the width is not as needed ($horizontal_resolution_per_stitch), then (re)-generate the file.
-      if [[ ! -f "$filename_to_save" || $(identify -format "%w" "$filename_to_save") -ne $horizontal_resolution_per_stitch ]]; then
-         echo "Building '$(readlink -f "$filename_to_save")'"
-         # There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
-         # So use imagemagick when stitching jpg files from MapQuest.
-         if [[ "$ext" == "jpg" ]]; then
-            eval "montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
-         
-            convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
-         else
-            eval "gm montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
-         
-            gm convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
-         fi
-      fi
+   westmost_long=$(xtile2long $tile_west $zoom_level)
+   northmost_lat=$(ytile2lat $tile_north $zoom_level)
+   
+   for ((y=0; y<$vertical_divide_by; y++)); do
+	for ((x=0; x<$horizontal_divide_by; x++)); do
+	   # The N latitude of each tile is nm-yt*ydegpx*ypixels
+	   N=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", nm-yt*ydegpx*ypixels }')
+	   # The S latitude of each tile is the same as N, but we have to add a complete vertical tile minus 1 pixel in degrees.
+	   S=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", nm-(yt+1)*ydegpx*ypixels+ydegpx }')
+	   # Similarly, we calculate the west and east
+	   W=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", wm+xt*xdegpx*xpixels }')
+	   E=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", wm+(xt+1)*xdegpx*xpixels-xdegpx }')
+	   # echo "$y"_"$x"
+	   # echo -e "$N"
+	   # echo -e "$S"
+	   # echo -e "$W"
+	   # echo -e "$E\n"
+	   echo "$(generate_OZI_map_file "$y"_"$x" "png" "$horizontal_resolution_per_stitch" "$vertical_resolution_per_stitch" "$zoom_level" "$N" "$W" "$E" "$S")" > "$y"_"$x".map
+	done
    done
-
-done
-
-
-echo ""
-echo "$(( $vertical_divide_by * $horizontal_divide_by )) ("$horizontal_divide_by"x"$vertical_divide_by") big tiles ($horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch pixels each) were generated"
-echo ""
+fi
