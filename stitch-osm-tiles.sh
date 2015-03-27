@@ -888,7 +888,7 @@ else
 
    files_per_folder=
    filenames_in_folder=()
-   total_folders_to_be_processed=$(ls -U $original_files_folder | wc -l)
+   total_folders_to_be_processed=$(ls -U "$original_files_folder" | wc -l)
    ext=
 
    ####################################
@@ -896,7 +896,7 @@ else
    ####################################
    # Find how many files exist for all the subdirectories in the zoom level.
    # All the subdirectories should contain the same number of files with the same filenames.
-   for folder in $(ls -U $original_files_folder | sort -n); do   
+   for folder in $(ls -U "$original_files_folder" | sort -n); do   
 	full_path_folder="$original_files_folder"/"$folder"
 
 	files_in_folder=$(ls -U "$full_path_folder" | wc -l)
@@ -970,7 +970,7 @@ else
 	while (( $pixels < ($i + 1) * $vertical_resolution_per_stitch )); do
 	   #echo $current_file
 	   # Add the filenames for each vertical stitch in an array.
-	   eval "files_stitch_$i+=( ${filenames_in_folder[$current_file]} )"
+	   eval "files_stitch_$i+=( \"${filenames_in_folder[$current_file]}\" )"
 	   if (( $i - 1 < 0 )); then
 		array_index=$current_file
 	   else
@@ -1030,19 +1030,19 @@ else
    # echo ${crop_rules_stitch_5[@]}
    # echo ${crop_rules_stitch_6[@]}
    # echo ${crop_rules_stitch_7[@]}
-
+   
    ###########
    # Step 2.2:
    ###########
    # Eventually use graphicsmagick to stich and crop the vertical tiles as needed.
    # This step will create many "thin" vertical tiles (256px wide) but very long (up to 'max_resolution_px' height).
    count=0
-   for folder in $(ls $original_files_folder); do
+   for folder in $(ls "$original_files_folder"); do
 	#eval "items_in_array=\${#files_stitch_$i[@]}"
 	let "count++"
 	echo "Processing vertical tiles in folder '"$zoom_level/$folder"' (progress: $count/$total_folders_to_be_processed)"
 	for (( i=0; i<$vertical_divide_by; i++ )); do
-	   eval "files_stitch_$i"_"$folder=( \${files_stitch_$i[@]/#/$original_files_folder\/$folder\/} )"
+	   eval "files_stitch_$i"_"$folder=( \"\${files_stitch_$i[@]/#/\"$original_files_folder/$folder/\"}\" )"
 	   eval "crop_from_top=\${crop_rules_stitch_$i[0]}"
 	
 	   filename_to_save="$stitches_folder/"$folder"_"$i".png"
@@ -1054,12 +1054,11 @@ else
 		# There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
 		# So use imagemagick when stitching jpg files from MapQuest.
 		if [[ "$ext" == "jpg" ]]; then
-		   eval "montage \${files_stitch_$i"_"$folder[@]} -tile 1x\${#files_stitch_$i"_"$folder[@]}  -geometry +0+0 $filename_to_save"
-		   convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+		   eval "montage \"\${files_stitch_${i}_${folder}[@]}\" -tile 1x\${#files_stitch_$i"_"$folder[@]}  -geometry +0+0 \"$filename_to_save\""
+		   convert -crop 256x"${vertical_resolution_per_stitch}"+0+"${crop_from_top}" "${filename_to_save}" "${filename_to_save}"
 		else
-		   eval "gm montage \${files_stitch_$i"_"$folder[@]} -tile 1x\${#files_stitch_$i"_"$folder[@]}  -geometry +0+0 $filename_to_save"
-
-		   gm convert -crop 256x"$vertical_resolution_per_stitch"+0+"$crop_from_top" "$filename_to_save" "$filename_to_save"
+		   eval "gm montage \"\${files_stitch_${i}_${folder}[@]}\" -tile 1x\${#files_stitch_${i}_${folder}[@]}  -geometry +0+0 \"${filename_to_save}\""
+		   gm convert -crop 256x"${vertical_resolution_per_stitch}"+0+"${crop_from_top}" "${filename_to_save}" "${filename_to_save}"
 		fi
 	   fi
 	done
@@ -1141,7 +1140,7 @@ else
 	   let "count++"
 	   echo "Processing final tiles for row "$j", column "$i" (progress: $count/$(( $vertical_divide_by * $horizontal_divide_by )))"
 	   
-	   eval "files_stitch_$j_$i=( \${files_stitch_$i[@]/#/$stitches_folder\/} )"
+	   eval "files_stitch_${j}_${i}=( \"\${files_stitch_$i[@]/#/\"$stitches_folder/\"}\" )"
 	   #eval "echo \${files_stitch_$j_$i[@]}"
 	   eval "crop_from_left=\${crop_rules_stitch_$i[0]}"
 	
@@ -1154,13 +1153,11 @@ else
 		# There is an annoying bug on graphicsmagick, and when I try to stitch jpg files, it shrinks the montaged file to half resolution :/
 		# So use imagemagick when stitching jpg files from MapQuest.
 		if [[ "$ext" == "jpg" ]]; then
-		   eval "montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
-		
-		   convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+		   eval "montage \"\${files_stitch_${j}_${i}[@]}\" -tile \${#files_stitch_${j}_${i}[@]}x1  -geometry +0+0 \"${filename_to_save}\""
+		   convert -crop "${horizontal_resolution_per_stitch}"x"${vertical_resolution_per_stitch}"+"${crop_from_left}"+0 "${filename_to_save}" "${filename_to_save}"
 		else
-		   eval "gm montage \${files_stitch_$j_$i[@]} -tile \${#files_stitch_$j_$i[@]}x1  -geometry +0+0 $filename_to_save"
-		
-		   gm convert -crop "$horizontal_resolution_per_stitch"x"$vertical_resolution_per_stitch"+"$crop_from_left"+0 "$filename_to_save" "$filename_to_save"
+		   eval "gm montage \"\${files_stitch_${j}_${i}[@]}\" -tile \${#files_stitch_${j}_${i}[@]}x1  -geometry +0+0 \"${filename_to_save}\""
+		   gm convert -crop "${horizontal_resolution_per_stitch}"x"${vertical_resolution_per_stitch}"+"${crop_from_left}"+0 "${filename_to_save}" "${filename_to_save}"
 		fi
 	   fi
 	done
@@ -1202,8 +1199,10 @@ if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
    
    westmost_long=$(xtile2long $tile_west $zoom_level)
    northmost_lat=$(ytile2lat $tile_north $zoom_level)
-   
+  
+   # Process row (each vertical y represents one row)....
    for ((y=0; y<$vertical_divide_by; y++)); do
+	# ...and columns x for each row y.
 	for ((x=0; x<$horizontal_divide_by; x++)); do
 	   # The N latitude of each tile is nm-yt*ydegpx*ypixels
 	   N=$(awk -v xt=$x -v yt=$y -v wm=$westmost_long -v nm=$northmost_lat -v ydegpx=$vertical_deg_per_px -v xdegpx=$horizontal_deg_per_px -v xpixels="$horizontal_resolution_per_stitch" -v ypixels="$vertical_resolution_per_stitch" 'BEGIN {printf "%.9f", nm-yt*ydegpx*ypixels }')
