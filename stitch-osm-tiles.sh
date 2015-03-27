@@ -25,22 +25,7 @@
 #   apt-get install graphicsmagick imagemagick
 #      The 'identify' utility of the imagemagick library is much much faster, but graphicsmagick library's montage and crop operations that are used by this script, are much faster.
 #      That's why I use both libraries.
-
-# How to use this script
-# 1. Download and run JTileDownloader
-#      svn co http://svn.openstreetmap.org/applications/utils/downloading/JTileDownloader/trunk/ JTileDownloader
-#      (use "ant run" if you want to do any modifications and compile the program)
-#      java -jar jar/jTileDownloader-0-6-1.jar
-# 2. Configure JTileDownloader
-#      a) In the Options tab, untick the "Wait <n> sec after downloading <m> tiles?> tick box.
-#      b) In the Options tab, increase the "Download Threads" to the maximum (4).
-#      c) In the Main tab, on the "Alt. TileServer" field add your own server to download the tiles from.
-#      d) In the Main tab, choose the "Bounding Box (Lat/Lon)" sub-tab and use the "Slippy Map chooser" to choose a rectangle that you want to download the tile from.
-#      e) Choose the zoom level
-#      f) Choose the desired "Outputfolder". The tiles will be downloaded in a folder with the number of the chosen zoom level, located under the directory that you chose in the "Outputfolder"
-#      g) Make sure that the "Outputfolder" is empty.
-#      h) Press the button "Download Tiles"
-#      i) Wait for the tile-download to complete. If you use a zoom level of 11 or more, it might take several thousand tiles to be downloaded as each OSM tile is 256x256px.
+#
 #         Each zoom level equivalent scale is:
 #             Level   Degree  Area              m / pixel       ~Scale
 #             0       360     whole world       156,412         1:500 Mio
@@ -63,19 +48,14 @@
 #             17      0.003                     1.193           1:4,000
 #             18      0.001                     0.596           1:2,000
 #             19      0.0005                    0.298           1:1,000 
-# 3. Copy this script in the chosen "Outputfolder".
-# 4. Run the script with one command line argument, that of the zoom level 
-#      e.g. if you chose to download tiles with zoom 12 and you set the "Outputfolder" in JTileDownloader to be "~/downloaded_tiles"
-#           add this script in the directory "~/downloaded_tiles" and execute like this:
-#                 $ cd ~/downloaded_tiles
-#                 $ ./stitch-osm-tiles.sh 12
 
 # TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
 #       Update the readme at the top of this file and the README.md file.
 #       Implement automatic calibration for OziExplorer: Implemented, but needs testing.
 #       Make subroutines for the stitching functionality?
-#       Save calibration files in the proper directory
-#       Add project functionality and store the downloaded data inside a project directory.
+#       Add proper "project" functionality.
+#       Add the tile server and chosen overlay used to download the tiles in the settings file of the project
+#       Add an option to load settings from a project file.
 
 trap "exit" INT
 
@@ -639,6 +619,29 @@ else
    
    # echo $(xtile2long $tile_west $zoom_level) $(xtile2long $tile_east $zoom_level)
    # echo $(ytile2lat $tile_north $zoom_level) $(ytile2lat $tile_south $zoom_level)
+   
+   # Store project information in project_folder
+   project_settings_file="$project_folder/zoom-$zoom_level-settings.osmtiles"
+   if [[ -f "$project_settings_file" ]]; then
+	echo "Zoom level $zoom_level tiles already exist for this project."
+	echo "Checking if data are as expected..."
+	# TODO: Check if the proper tiles are downloaded.
+	# If not, then you can safely keep on downloading.
+	# If more tiles than those needed for the given coordinates exist, raise an error and exit.
+   else
+	echo "
+Zoom: $zoom_level
+command_line_longtitude1 (W): $lon1
+command_line_longtitude2 (E): $lon2
+command_line_latitude1 (N): $lat1
+command_line_latitude2 (S): $lat2
+tile_west: $tile_west
+tile_north: $tile_north
+tile_east: $tile_east
+tile_south: $tile_south
+W_degrees_by_western_most_tile: $(xtile2long $tile_west $zoom_level)
+N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$project_settings_file"
+   fi
 fi
 
 # When we download files, we download from $tile_west to $tile_east inclusive.
@@ -707,11 +710,13 @@ else
    successfully_downloaded=0
    parallel_downloads=100
    #set -x
-   echo "Started downloading on "$(date) > $zoom_level.log
+   logfile="$project_folder/$zoom_level.log"
+   echo "Started downloading on "$(date) > "$logfile"
    echo "Downloading $total_tiles_to_download tiles."
    declare -A pid_array=()
    for (( lon=$tile_west; lon<=$tile_east; lon++)); do
-      mkdir -p "$zoom_level/$lon"
+	download_folder="$project_folder/original_files/$zoom_level/$lon"
+      mkdir -p "$download_folder"
       for (( lat=$tile_north; lat<=$tile_south; lat++)); do
          (( ++downloading_now ))
          # If more than one tile server is provided, use all of the tile servers in a round robin fashion.
@@ -738,7 +743,7 @@ else
                         # If the exit status of the finished background process is not 0 (meaning that the process
                         # did not finish successfylly), then add a log warning so that the user knows which tiles
                         # faced download problems.
-                        echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> $zoom_level.log
+                        echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> "$logfile"
                      fi
                      # remove the pid from the array
                      unset "pid_array[$i]"
@@ -749,15 +754,15 @@ else
          fi
          
          # If the file does not exist or is corrupted, then download the file.
-         if [[ ! -f "$zoom_level/$lon/$lat.$ext" || $(identify -format "%h" "$zoom_level/$lon/$lat.$ext") -ne 256 && $(identify -format "%w" "$zoom_level/$lon/$lat.$ext") -ne 256 ]]; then
+         if [[ ! -f "$download_folder/$lat.$ext" || $(identify -format "%h" "$download_folder/$lat.$ext") -ne 256 && $(identify -format "%w" "$download_folder/$lat.$ext") -ne 256 ]]; then
             echo "Downloading tile $downloading_now/$total_tiles_to_download.."
             # Start a new download thread using wget and put it in the background.
-            echo "wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$zoom_level/$lon/$lat.$ext" -o /dev/null"
-            wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$zoom_level/$lon/$lat.$ext" -o /dev/null &
+            #echo "wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null"
+            wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null &
             # Store the PID of the last wget command added in the background.
-            pid_array[$!]="$zoom_level/$lon/$lat.$ext"
+            pid_array[$!]="$download_folder/$lat.$ext"
          else
-            echo "File '$zoom_level/$lon/$lat.$ext' ($downloading_now/$total_tiles_to_download) already downloaded."
+            echo "File '$download_folder/$lat.$ext' ($downloading_now/$total_tiles_to_download) already downloaded."
             (( successfully_downloaded++ ))
          fi
          
@@ -773,7 +778,7 @@ else
 			   if [[ $exit_status -eq 0 ]]; then
 				(( successfully_downloaded++ ))
 			   else
-				echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> $zoom_level.log
+				echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> "$logfile"
 			   fi
 			   unset "pid_array[$i]"
 			fi
@@ -783,7 +788,7 @@ else
       done
    done
    
-   echo "Finished downloading on "$(date) >> $zoom_level.log
+   echo "Finished downloading on "$(date) >> "$logfile"
    
    problems_occured=$(( $total_tiles_to_download - $successfully_downloaded ))
    if [[ $problems_occured -gt 0 ]]; then
@@ -845,11 +850,15 @@ while [[ $horizontal_resolution_per_stitch -gt $max_resolution_px ]]; do
 	fi
 done
 
-
 ######################################
 # Start the stitching procedure here #
 ######################################
 # If the user wants to skip the stitching and hasn't asked for file calibration, then exit the program here.
+
+original_files_folder="$(pwd)/$project_folder/original_files/$zoom_level"
+stitches_folder="$(pwd)/$project_folder/vertical_stitches/$zoom_level"
+stitches_folder_final="$(pwd)/$project_folder/final_stitches/$zoom_level"
+
 if [[ $skip_stitching -eq 1 || $only_calibrate -eq 1 ]]; then
    echo "Skipping stitching as requested..."
 else
@@ -858,9 +867,7 @@ else
    echo ""
    echo "Starting the stitching procedure..."
    echo ""
-   if [[ -d "$zoom_level" ]]; then
-	stitches_folder="$(pwd)/stitches/$zoom_level"
-	stitches_folder_final="$stitches_folder/../final/$zoom_level/"
+   if [[ -d "$original_files_folder" ]]; then
 	if [[ -d "$stitches_folder" ]]; then
 	   echo "Folder '$stitches_folder' already exists. Do you want to delete the folder's contents and recreate all of the tiles?"
 	   echo "If you do not delete the folder, existing tiles will not be regenerated."
@@ -881,7 +888,7 @@ else
 
    files_per_folder=
    filenames_in_folder=()
-   total_folders_to_be_processed=$(ls -U $zoom_level | wc -l)
+   total_folders_to_be_processed=$(ls -U $original_files_folder | wc -l)
    ext=
 
    ####################################
@@ -889,8 +896,8 @@ else
    ####################################
    # Find how many files exist for all the subdirectories in the zoom level.
    # All the subdirectories should contain the same number of files with the same filenames.
-   for folder in $(ls -U $zoom_level | sort -n); do   
-	full_path_folder="$(pwd)/$zoom_level"/"$folder"
+   for folder in $(ls -U $original_files_folder | sort -n); do   
+	full_path_folder="$original_files_folder"/"$folder"
 
 	files_in_folder=$(ls -U "$full_path_folder" | wc -l)
 	# On the first round in the for loop, $files_per_folder = blank (-z returns true)
@@ -1030,12 +1037,12 @@ else
    # Eventually use graphicsmagick to stich and crop the vertical tiles as needed.
    # This step will create many "thin" vertical tiles (256px wide) but very long (up to 'max_resolution_px' height).
    count=0
-   for folder in $(ls $zoom_level); do
+   for folder in $(ls $original_files_folder); do
 	#eval "items_in_array=\${#files_stitch_$i[@]}"
 	let "count++"
-	echo "Processing vertical tiles in folder "./$zoom_level/$folder" (progress: $count/$total_folders_to_be_processed)"
+	echo "Processing vertical tiles in folder '"$zoom_level/$folder"' (progress: $count/$total_folders_to_be_processed)"
 	for (( i=0; i<$vertical_divide_by; i++ )); do
-	   eval "files_stitch_$i"_"$folder=( \${files_stitch_$i[@]/#/$(pwd)\/$zoom_level\/$folder\/} )"
+	   eval "files_stitch_$i"_"$folder=( \${files_stitch_$i[@]/#/$original_files_folder\/$folder\/} )"
 	   eval "crop_from_top=\${crop_rules_stitch_$i[0]}"
 	
 	   filename_to_save="$stitches_folder/"$folder"_"$i".png"
@@ -1186,6 +1193,7 @@ if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
 #    South=56.26776
 
    echo "Calibrating maps"
+   mkdir -p "$stitches_folder_final"
    # http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Zoom_levels
    # Tile size in degrees: 360/2^zoom x 170.1022/2^zoom
    # Pixel size in degrees: (360/2^zoom x 170.1022/2^zoom)/256
@@ -1209,7 +1217,8 @@ if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
 	   # echo -e "$S"
 	   # echo -e "$W"
 	   # echo -e "$E\n"
-	   echo "$(generate_OZI_map_file "$y"_"$x" "png" "$horizontal_resolution_per_stitch" "$vertical_resolution_per_stitch" "$zoom_level" "$N" "$W" "$E" "$S")" > "$y"_"$x".map
+	   echo "$(generate_OZI_map_file "$y"_"$x" "png" "$horizontal_resolution_per_stitch" "$vertical_resolution_per_stitch" "$zoom_level" "$N" "$W" "$E" "$S")" > "$stitches_folder_final"/"$y"_"$x".map
+	   echo "Generated map calibration file "$stitches_folder_final"/"$y"_"$x".map"
 	done
    done
 fi
