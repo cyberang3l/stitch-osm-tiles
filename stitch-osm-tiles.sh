@@ -51,10 +51,8 @@
 
 # TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
 #       Update the readme at the top of this file and the README.md file.
-#       Implement automatic calibration for OziExplorer: Implemented, but needs testing.
 #       Make subroutines for the stitching functionality?
 #       Add proper "project" functionality.
-#       Add the tile server and chosen overlay used to download the tiles in the settings file of the project
 #       Add an option to load settings from a project file.
 
 trap "exit" INT
@@ -117,6 +115,9 @@ function usage {
    echo "can be used to download tiles defined by a bounding box and then stitch them if -p"
    echo "option is not used."
    echo ""
+   echo " -p|--project-name                    Choose a project name. The downloaded data and stitching"
+   echo "                                        operations will all be made under this folder."
+   echo "                                        Default value: 'maps_project'"
    echo " -z|--zoom-level ZOOM                 Valid ZOOM values: 0-18. This option is mandatory."
    echo " -w|--lon1 W_DEGREES                  Set the western (W) longtitude of a bounding box for"
    echo "                                        tile downloading. -e, -n and -s should also be set."
@@ -142,7 +143,7 @@ function usage {
    echo "                                        This option can also be set as an OSM_CUSTOM_EXTENSION"
    echo "                                        environment variable, and it has no effect if it is"
    echo "                                        not used together with the -o option."
-   echo " -p|--skip-stitching                  This option can be used together with the -w, -e, -n"
+   echo " -k|--skip-stitching                  This option can be used together with the -w, -e, -n"
    echo "                                        and -s options, in order to just download tiles, but"
    echo "                                        not stitch them together. The stitching and"
    echo "                                        calibration can always can be done later."
@@ -193,14 +194,10 @@ skip_stitching=0
 skip_tile_downloading=0
 only_calibrate=0
 project_folder="maps_project"
+provider=
+overlay=
 
-args=$(getopt --options z:w:e:n:s:ho:pt:r:x:cd --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension:only-calibrate,skip-tile-downloading -- "$@")
-
-#if [ "$(echo "$args" | $EGREP "(^|'[[:space:]]')-z[[:space:]]")" == "" ]; then
-#       echo "\nParameter \"-z (--zoom-level)\" is mandatory.."
-#       usage
-#       exit 1
-#fi
+args=$(getopt --options z:w:e:n:s:ho:kt:r:x:cdp: --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension:only-calibrate,skip-tile-downloading,project-name: -- "$@")
 
 eval set -- "$args"
 
@@ -239,11 +236,11 @@ do
          osm_custom_server="$1"
          shift
          ;;
-	-x|--custom-osm-extension) shift
+      -x|--custom-osm-extension) shift
          osm_custom_extension="$1"
          shift
          ;;
-	-t|--tile-server-provider) shift
+      -t|--tile-server-provider) shift
          provider="$1"
          shift
          ;;
@@ -251,15 +248,19 @@ do
          overlay="$1"
          shift
          ;;
-      -p|--skip-stitching) shift
+      -p|--project_name) shift
+         project_folder=$1
+         shift
+         ;;
+      -k|--skip-stitching) shift
          skip_stitching=1
          ;;
-	-d|--skip-tile-downloading) shift
+      -d|--skip-tile-downloading) shift
          skip_tile_downloading=1
          ;;
-	-c|only-calibrate) shift
-	   only_calibrate=1
-	   ;;
+      -c|--only-calibrate) shift
+         only_calibrate=1
+         ;;
       -h|--help) shift
          usage
          ;;
@@ -269,8 +270,8 @@ done
 provider_tile_servers=
 process_provider()
 {
-   local provider=$1
-   local overlay=$2
+   provider=$1
+   overlay=$2
    
    local available_overlays="$provider"_available_overlays[@]
    local tile_servers="$provider"_tile_servers[@]
@@ -643,29 +644,6 @@ else
    
    # echo $(xtile2long $tile_west $zoom_level) $(xtile2long $tile_east $zoom_level)
    # echo $(ytile2lat $tile_north $zoom_level) $(ytile2lat $tile_south $zoom_level)
-   
-   # Store project information in project_folder
-   project_settings_file="$project_folder/zoom-$zoom_level-settings.osmtiles"
-   if [[ -f "$project_settings_file" ]]; then
-	echo "Zoom level $zoom_level tiles already exist for this project."
-	echo "Checking if data are as expected..."
-	# TODO: Check if the proper tiles are downloaded.
-	# If not, then you can safely keep on downloading.
-	# If more tiles than those needed for the given coordinates exist, raise an error and exit.
-   else
-	echo "
-Zoom: $zoom_level
-command_line_longtitude1 (W): $lon1
-command_line_longtitude2 (E): $lon2
-command_line_latitude1 (N): $lat1
-command_line_latitude2 (S): $lat2
-tile_west: $tile_west
-tile_north: $tile_north
-tile_east: $tile_east
-tile_south: $tile_south
-W_degrees_by_western_most_tile: $(xtile2long $tile_west $zoom_level)
-N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$project_settings_file"
-   fi
 fi
 
 # When we download files, we download from $tile_west to $tile_east inclusive.
@@ -728,6 +706,36 @@ else
    # echo "${provider_tile_servers[@]}"
    # echo "$ext"
    
+   # Store project information in project_folder at this point
+   mkdir -p $project_folder
+   project_settings_file="$project_folder/zoom-$zoom_level-settings.osmtiles"
+   if [[ -f "$project_settings_file" ]]; then
+	echo "Zoom level $zoom_level tiles already exist for this project."
+	echo "Checking if data are as expected..."
+	# TODO: Check if the proper tiles are downloaded.
+	# If not, then you can safely keep on downloading.
+	# If more tiles than those needed for the given coordinates exist, raise an error and exit.
+   else
+	if [[ "$provider" == "osm_custom" ]]; then
+	   provider_string="${provider_tile_servers[0]}"
+	else
+	   provider_string="$provider"
+	fi
+	echo "Provider: $provider_string
+Overlay: $overlay
+Zoom: $zoom_level
+command_line_longtitude1 (W): $lon1
+command_line_longtitude2 (E): $lon2
+command_line_latitude1 (N): $lat1
+command_line_latitude2 (S): $lat2
+tile_west: $tile_west
+tile_north: $tile_north
+tile_east: $tile_east
+tile_south: $tile_south
+W_degrees_by_western_most_tile: $(xtile2long $tile_west $zoom_level)
+N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$project_settings_file"
+   fi
+
    # Eventually download the tiles.
    total_tiles_to_download=$(( $number_of_horizontal_tiles * $number_of_vertical_tiles ))
    downloading_now=0
