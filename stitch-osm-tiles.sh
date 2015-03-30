@@ -93,7 +93,7 @@ mapquest_tile_servers=(
 # MapQuest2
 #   sat: Satellite (available zoom levels 0-13)
 mapquest2_available_overlays=( "map" "sat" "hyb" )
-mapquest2_extension="png"
+mapquest2_extension="jpg"
 mapquest2_tile_servers=( 
  "http://ttiles01.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
  "http://ttiles02.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
@@ -711,8 +711,12 @@ else
 	fi
    fi
    
-   temp_var="$provider"_extension
-   ext=${!temp_var}
+   if [[ "$provider" == "mapquest2" && "$overlay" == "hyb" ]]; then
+	ext="png"
+   else
+	temp_var="$provider"_extension
+	ext=${!temp_var}
+   fi
    # echo "${provider_tile_servers[@]}"
    # echo "$ext"
    
