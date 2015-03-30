@@ -73,7 +73,7 @@ osm_custom_extension=${OSM_CUSTOM_EXTENSION:-"png"}
 #
 # The first values of each array are considered to be the defaults
 # available_providers=( "mapquest" "thunderforest" )
-available_providers=( "mapquest" )
+available_providers=( "mapquest" "mapquest2" )
 
 # MapQuest tile servers
 # http://www.mapquest.com/
@@ -81,7 +81,7 @@ available_providers=( "mapquest" )
 # Available MAPQUEST Overlays:
 #   osm|map: OpenStreetMap (available zoom levels 0-18)
 #   sat: Satellite (available zoom levels 0-11)
-mapquest_available_overlays=( "osm" "map" "sat" )
+mapquest_available_overlays=( "map" "osm" "sat" )
 mapquest_extension="jpg"
 mapquest_tile_servers=( 
  "http://otile1.mqcdn.com/tiles/1.0.0/_OVERLAY_"
@@ -90,6 +90,16 @@ mapquest_tile_servers=(
  "http://otile4.mqcdn.com/tiles/1.0.0/_OVERLAY_"
 )
 
+# MapQuest2
+#   sat: Satellite (available zoom levels 0-13)
+mapquest2_available_overlays=( "map" "sat" "hyb" )
+mapquest2_extension="png"
+mapquest2_tile_servers=( 
+ "http://ttiles01.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
+ "http://ttiles02.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
+ "http://ttiles03.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
+ "http://ttiles04.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
+)
 # # Thunderforest tile servers
 # # http://thunderforest.com/
 # #
@@ -1089,7 +1099,8 @@ else
 		   eval "montage \"\${files_stitch_${i}_${folder}[@]}\" -tile 1x\${#files_stitch_$i"_"$folder[@]}  -geometry +0+0 \"$filename_to_save\""
 		   convert -crop 256x"${vertical_resolution_per_stitch}"+0+"${crop_from_top}" "${filename_to_save}" "${filename_to_save}"
 		else
-		   eval "gm montage \"\${files_stitch_${i}_${folder}[@]}\" -tile 1x\${#files_stitch_${i}_${folder}[@]}  -geometry +0+0 \"${filename_to_save}\""
+                   # Use background none to keep the transparency on png's (if any)
+		   eval "gm montage \"\${files_stitch_${i}_${folder}[@]}\" -tile 1x\${#files_stitch_${i}_${folder}[@]}  -background none -geometry +0+0 \"${filename_to_save}\""
 		   gm convert -crop 256x"${vertical_resolution_per_stitch}"+0+"${crop_from_top}" "${filename_to_save}" "${filename_to_save}"
 		fi
 	   fi
@@ -1188,7 +1199,7 @@ else
 		   eval "montage \"\${files_stitch_${j}_${i}[@]}\" -tile \${#files_stitch_${j}_${i}[@]}x1  -geometry +0+0 \"${filename_to_save}\""
 		   convert -crop "${horizontal_resolution_per_stitch}"x"${vertical_resolution_per_stitch}"+"${crop_from_left}"+0 "${filename_to_save}" "${filename_to_save}"
 		else
-		   eval "gm montage \"\${files_stitch_${j}_${i}[@]}\" -tile \${#files_stitch_${j}_${i}[@]}x1  -geometry +0+0 \"${filename_to_save}\""
+		   eval "gm montage \"\${files_stitch_${j}_${i}[@]}\" -tile \${#files_stitch_${j}_${i}[@]}x1 -background none -geometry +0+0 \"${filename_to_save}\""
 		   gm convert -crop "${horizontal_resolution_per_stitch}"x"${vertical_resolution_per_stitch}"+"${crop_from_left}"+0 "${filename_to_save}" "${filename_to_save}"
 		fi
 	   fi
@@ -1257,3 +1268,8 @@ if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
 	done
    done
 fi
+
+# To compose two images (sattelite with hybrid on top), use the convert command like this:
+#   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
+# Use the already generated oziexplorer map files.
+# Of course, the W, E, N, S should be exactly the same for the sat and hyb images.
