@@ -153,6 +153,10 @@ function usage {
    echo "                                        This option can also be set as an OSM_CUSTOM_EXTENSION"
    echo "                                        environment variable, and it has no effect if it is"
    echo "                                        not used together with the -o option."
+   echo " -r|--retry-failed                    Retry to download tiles that failed to be downloaded at"
+   echo "                                        the first try. If this option is not used, the files"
+   echo "                                        that they were not able to be download, will be logged"
+   echo "                                        in a log file."
    echo " -k|--skip-stitching                  This option can be used together with the -w, -e, -n"
    echo "                                        and -s options, in order to just download tiles, but"
    echo "                                        not stitch them together. The stitching and"
@@ -171,7 +175,7 @@ function usage {
    for (( i=0; i<${#available_providers[@]}; i++ )); do
 	echo "                                             * ${available_providers[$i]}"
    done
-   echo " -r|--tile-server-provider-overlay OVERLAY"
+   echo " -l|--tile-server-provider-overlay OVERLAY"
    echo "                                      Choose one of the overlays for the predefined tile"
    echo "                                        providers. This option has no effect if it is"
    echo "                                        not used together in combination with -t option."
@@ -206,8 +210,9 @@ only_calibrate=0
 project_folder="maps_project"
 provider=
 overlay=
+retry_failed=0
 
-args=$(getopt --options z:w:e:n:s:ho:kt:r:x:cdp: --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension:only-calibrate,skip-tile-downloading,project-name: -- "$@")
+args=$(getopt --options z:w:e:n:s:ho:kt:l:x:cdp:r --longoptions zoom-level:,lon1:,lon2:,lat1:,lat2:,help,custom-osm-server:,skip-stitching,tile-server-provider:,tile-server-provider-overlay:,custom-osm-extension:,only-calibrate,skip-tile-downloading,project-name:,retry-failed -- "$@")
 
 eval set -- "$args"
 
@@ -254,13 +259,16 @@ do
          provider="$1"
          shift
          ;;
-      -r|--tile-server-provider-overlay) shift
+      -l|--tile-server-provider-overlay) shift
          overlay="$1"
          shift
          ;;
       -p|--project_name) shift
          project_folder=$1
          shift
+         ;;
+	-r|--retry-failed) shift
+         retry_failed=1
          ;;
       -k|--skip-stitching) shift
          skip_stitching=1
@@ -755,7 +763,6 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
    downloading_now=0
    successfully_downloaded=0
    parallel_downloads=100
-   #set -x
    logfile="$project_folder/$zoom_level.log"
    echo "Started downloading on "$(date) > "$logfile"
    echo "Downloading $total_tiles_to_download tiles."
@@ -784,16 +791,32 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
                      exit_status=$?
                      if [[ $exit_status -eq 0 ]]; then
                         # If the exit status of the background process is zero, increase the "successfully_downloaded" counter
+                        failed_tile_name=
                         (( successfully_downloaded++ ))
                      else
                         # If the exit status of the finished background process is not 0 (meaning that the process
                         # did not finish successfylly), then add a log warning so that the user knows which tiles
                         # faced download problems.
-                        echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> "$logfile"
+                        if [[ $retry_failed -eq 1 ]]; then
+				   echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server. Retrying..." >> "$logfile"
+				   failed_tile_name="${pid_array[$i]}"
+				else
+				   echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server." >> "$logfile"
+				fi
                      fi
                      # remove the pid from the array
                      unset "pid_array[$i]"
-                     (( removed++ ))
+                     
+                     # If the tile was not downloaded successfully, the variable $failed_tile_name will
+                     # not be empty. If the user has asked to retry to download failed tiles, then run
+                     # "wget" for the specified tile again.
+                     if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
+				failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+				wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null &
+				pid_array[$!]="$download_folder/$lat.$ext"
+                     else
+				(( removed++ ))
+                     fi
                   fi
                done
             done
@@ -822,11 +845,22 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
 			   wait $i
 			   exit_status=$?
 			   if [[ $exit_status -eq 0 ]]; then
+				failed_tile_name=
 				(( successfully_downloaded++ ))
 			   else
-				echo "ERROR: File ${pid_array[$i]} was not downloaded properly from server $tile_server." >> "$logfile"
+				if [[ $retry_failed -eq 1 ]]; then
+				   echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server. Retrying..." >> "$logfile"
+				   failed_tile_name="${pid_array[$i]}"
+				else
+				   echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server." >> "$logfile"
+				fi
 			   fi
 			   unset "pid_array[$i]"
+			   if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
+				failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+				wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null &
+				pid_array[$!]="$download_folder/$lat.$ext"
+			   fi
 			fi
 		   done
 		done
