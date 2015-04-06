@@ -813,7 +813,7 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
                      if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
                      	failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
                      	counter=0
-                     	while [[ counter -lt 3 ]]; do
+                     	while [[ $counter -lt 3 ]]; do
                      	   wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null
                      	   exit_status=$?
                      	   if [[ $exit_status -ne 0 ]]; then
@@ -868,7 +868,7 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
 			   if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
 				failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
 				counter=0
-				while [[ counter -lt 3 ]]; do
+				while [[ $counter -lt 3 ]]; do
 				   wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null
 				   exit_status=$?
 				   if [[ $exit_status -ne 0 ]]; then
