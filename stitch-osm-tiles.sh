@@ -798,11 +798,11 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
                         # did not finish successfylly), then add a log warning so that the user knows which tiles
                         # faced download problems.
                         if [[ $retry_failed -eq 1 ]]; then
-				   echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server. Retrying..." >> "$logfile"
-				   failed_tile_name="${pid_array[$i]}"
-				else
-				   echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server." >> "$logfile"
-				fi
+                           echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server. Retrying..." >> "$logfile"
+                           failed_tile_name="${pid_array[$i]}"
+                        else
+                           echo "ERROR: File '${pid_array[$i]}' was not downloaded properly from server $tile_server." >> "$logfile"
+                        fi
                      fi
                      # remove the pid from the array
                      unset "pid_array[$i]"
@@ -811,12 +811,21 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
                      # not be empty. If the user has asked to retry to download failed tiles, then run
                      # "wget" for the specified tile again.
                      if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
-				failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
-				wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null &
-				pid_array[$!]="$download_folder/$lat.$ext"
-                     else
-				(( removed++ ))
+                     	failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+                     	counter=0
+                     	while [[ counter -lt 3 ]]; do
+                     	   wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null
+                     	   exit_status=$?
+                     	   if [[ $exit_status -ne 0 ]]; then
+                     		(( counter++ ))
+                     		echo "ERROR: File '$zoom_level/$lon/$lat.$ext' was not downloaded properly from server $tile_server after $counter retries. Giving up..." >> "$logfile"
+                     	   else
+                     		echo "GOOD: File '$zoom_level/$lon/$lat.$ext' was eventually downloaded." >> "$logfile"
+                     		break
+                     	   fi
+                     	done
                      fi
+                     (( removed++ ))
                   fi
                done
             done
@@ -858,8 +867,18 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
 			   unset "pid_array[$i]"
 			   if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
 				failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
-				wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null &
-				pid_array[$!]="$download_folder/$lat.$ext"
+				counter=0
+				while [[ counter -lt 3 ]]; do
+				   wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null
+				   exit_status=$?
+				   if [[ $exit_status -ne 0 ]]; then
+					(( counter++ ))
+					echo "ERROR: File '$zoom_level/$lon/$lat.$ext' was not downloaded properly from server $tile_server after $counter retries. Giving up..." >> "$logfile"
+				   else
+					echo "GOOD: File '$zoom_level/$lon/$lat.$ext' was eventually downloaded." >> "$logfile"
+					break
+				   fi
+				done
 			   fi
 			fi
 		   done
