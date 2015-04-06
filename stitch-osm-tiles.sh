@@ -811,18 +811,18 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
                      # not be empty. If the user has asked to retry to download failed tiles, then run
                      # "wget" for the specified tile again.
                      if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
-                     	failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+                     	failed_tile_name_url="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
                      	counter=0
                      	max_counter=3
                      	while [[ $counter -lt $max_counter ]]; do
-                     	   wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null
+                     	   wget "$tile_server/$failed_tile_name_url" -O "$failed_tile_name" -o /dev/null
                      	   exit_status=$?
                      	   if [[ $exit_status -ne 0 ]]; then
                      		(( counter++ ))
-                     		echo "ERROR: File '$zoom_level/$lon/$lat.$ext' was not downloaded properly from server $tile_server after $counter retries." >> "$logfile"
-                     		if [[ $counter -eq $max_counter ]]; then echo "ERROR: Giving up on file '$zoom_level/$lon/$lat.$ext'"; fi
+                     		echo "ERROR: File '$failed_tile_name_url' was not downloaded properly from server $tile_server after $counter retries." >> "$logfile"
+                     		if [[ $counter -eq $max_counter ]]; then echo "ERROR: Giving up on file '$failed_tile_name_url'"  >> "$logfile"; fi
                      	   else
-                     		echo "GOOD: File '$zoom_level/$lon/$lat.$ext' was eventually downloaded." >> "$logfile"
+                     		echo "GOOD: File '$failed_tile_name_url' was eventually downloaded." >> "$logfile"
                      		counter=$max_counter
                      	   fi
                      	done
@@ -868,22 +868,22 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
 			   fi
 			   unset "pid_array[$i]"
 			   if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
-				failed_tile_name="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
-				counter=0
-				max_counter=3
-				while [[ $counter -lt $max_counter ]]; do
-				   wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null
-				   exit_status=$?
-				   if [[ $exit_status -ne 0 ]]; then
-					(( counter++ ))
-					echo "ERROR: File '$zoom_level/$lon/$lat.$ext' was not downloaded properly from server $tile_server after $counter retries." >> "$logfile"
-                     		if [[ $counter -eq $max_counter ]]; then echo "ERROR: Giving up on file '$zoom_level/$lon/$lat.$ext'"; fi
-				   else
-					echo "GOOD: File '$zoom_level/$lon/$lat.$ext' was eventually downloaded." >> "$logfile"
-					counter=$max_counter
-				   fi
-				done
-			   fi
+                     	failed_tile_name_url="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+                     	counter=0
+                     	max_counter=3
+                     	while [[ $counter -lt $max_counter ]]; do
+                     	   wget "$tile_server/$failed_tile_name_url" -O "$failed_tile_name" -o /dev/null
+                     	   exit_status=$?
+                     	   if [[ $exit_status -ne 0 ]]; then
+                     		(( counter++ ))
+                     		echo "ERROR: File '$failed_tile_name_url' was not downloaded properly from server $tile_server after $counter retries." >> "$logfile"
+                     		if [[ $counter -eq $max_counter ]]; then echo "ERROR: Giving up on file '$failed_tile_name_url'"  >> "$logfile"; fi
+                     	   else
+                     		echo "GOOD: File '$failed_tile_name_url' was eventually downloaded." >> "$logfile"
+                     		counter=$max_counter
+                     	   fi
+                     	done
+                     fi
 			fi
 		   done
 		done
