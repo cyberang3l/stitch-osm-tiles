@@ -84,10 +84,10 @@ available_providers=( "mapquest" "mapquest2" "stamen" )
 mapquest_available_overlays=( "map" "osm" "sat" )
 mapquest_extension="jpg"
 mapquest_tile_servers=( 
- "http://otile1.mqcdn.com/tiles/1.0.0/_OVERLAY_"
- "http://otile2.mqcdn.com/tiles/1.0.0/_OVERLAY_"
- "http://otile3.mqcdn.com/tiles/1.0.0/_OVERLAY_"
- "http://otile4.mqcdn.com/tiles/1.0.0/_OVERLAY_"
+ "http://otile1.mqcdn.com/tiles/1.0.0/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://otile2.mqcdn.com/tiles/1.0.0/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://otile3.mqcdn.com/tiles/1.0.0/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://otile4.mqcdn.com/tiles/1.0.0/_OVERLAY_/{z}/{x}/{y}.{ext}"
 )
 
 # MapQuest2
@@ -95,19 +95,19 @@ mapquest_tile_servers=(
 mapquest2_available_overlays=( "map" "sat" "hyb" )
 mapquest2_extension="jpg"
 mapquest2_tile_servers=( 
- "http://ttiles01.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
- "http://ttiles02.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
- "http://ttiles03.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
- "http://ttiles04.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
+ "http://ttiles01.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://ttiles02.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://ttiles03.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://ttiles04.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_/{z}/{x}/{y}.{ext}"
 )
 # Stamen Hybrid
 stamen_available_overlays=( "toner-hybrid" )
 stamen_extension="png"
 stamen_tile_servers=( 
- "http://a.sm.mapstack.stamen.com/_OVERLAY_"
- "http://b.sm.mapstack.stamen.com/_OVERLAY_"
- "http://c.sm.mapstack.stamen.com/_OVERLAY_"
- "http://d.sm.mapstack.stamen.com/_OVERLAY_"
+ "http://a.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://b.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://c.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
+ "http://d.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
 )
 # # Thunderforest tile servers
 # # http://thunderforest.com/
@@ -334,6 +334,17 @@ process_provider()
 	done
 	provider_tile_servers=( "${tile_servers[@]}" )
    fi
+}
+
+get_url()
+{
+   tile_url="$1"
+   z="$2"
+   x="$3"
+   y="$4"
+   ext="$5"
+   
+   echo $(echo $tile_url | sed -e 's/{z}/'$z'/g' -e 's/{x}/'$x'/g' -e 's/{y}/'$y'/g' -e 's/{ext}/'$ext'/g')
 }
 
 ######################################################################################
@@ -777,8 +788,8 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
    echo "Downloading $total_tiles_to_download tiles."
    declare -A pid_array=()
    for (( lon=$tile_west; lon<=$tile_east; lon++)); do
-	download_folder="$project_folder/original_files/$zoom_level/$lon"
-      mkdir -p "$download_folder"
+	download_folder="$project_folder/original_files/"
+      mkdir -p "$download_folder/$zoom_level/$lon"
       for (( lat=$tile_north; lat<=$tile_south; lat++)); do
          (( ++downloading_now ))
          # If more than one tile server is provided, use all of the tile servers in a round robin fashion.
@@ -821,10 +832,13 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
                      # "wget" for the specified tile again.
                      if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
                      	failed_tile_name_url="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+                     	z=$(echo "$failed_tile_name_url" | awk -F'[/.]' '{print $2}')
+                     	x=$(echo "$failed_tile_name_url" | awk -F'[/.]' '{print $3}')
+                     	y=$(echo "$failed_tile_name_url" | awk -F'[/.]' '{print $4}')
                      	counter=0
                      	max_counter=3
                      	while [[ $counter -lt $max_counter ]]; do
-                     	   wget "$tile_server/$failed_tile_name_url" -O "$failed_tile_name" -o /dev/null
+				   wget "$(get_url $tile_server $z $x $y $ext)" -O "$download_folder/$z/$x/$y.$ext" -o /dev/null
                      	   exit_status=$?
                      	   if [[ $exit_status -ne 0 ]]; then
                      		(( counter++ ))
@@ -843,15 +857,15 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
          fi
          
          # If the file does not exist or is corrupted, then download the file.
-         if [[ ! -f "$download_folder/$lat.$ext" || $(identify -format "%h" "$download_folder/$lat.$ext") -ne 256 && $(identify -format "%w" "$download_folder/$lat.$ext") -ne 256 ]]; then
+         if [[ ! -f "$download_folder/$zoom_level/$lon/$lat.$ext" || $(identify -format "%h" "$download_folder/$zoom_level/$lon/$lat.$ext") -ne 256 && $(identify -format "%w" "$download_folder/$zoom_level/$lon/$lat.$ext") -ne 256 ]]; then
             echo "Downloading tile $downloading_now/$total_tiles_to_download.."
             # Start a new download thread using wget and put it in the background.
-            #echo "wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null"
-            wget "$tile_server/$zoom_level/$lon/$lat.$ext" -O "$download_folder/$lat.$ext" -o /dev/null &
+            #echo "wget "$(get_url $tile_server $zoom_level $lon $lat $ext)" -O "$download_folder/$zoom_level/$lon/$lat.$ext" -o /dev/null"
+            wget "$(get_url $tile_server $zoom_level $lon $lat $ext)" -O "$download_folder/$zoom_level/$lon/$lat.$ext" -o /dev/null &
             # Store the PID of the last wget command added in the background.
-            pid_array[$!]="$download_folder/$lat.$ext"
+            pid_array[$!]="$download_folder/$zoom_level/$lon/$lat.$ext"
          else
-            echo "File '$download_folder/$lat.$ext' ($downloading_now/$total_tiles_to_download) already downloaded."
+            echo "File '$download_folder/$zoom_level/$lon/$lat.$ext' ($downloading_now/$total_tiles_to_download) already downloaded."
             (( successfully_downloaded++ ))
          fi
          
@@ -878,10 +892,13 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
 			   unset "pid_array[$i]"
 			   if [[ ! -z "$failed_tile_name" && $retry_failed -eq 1 ]]; then
                      	failed_tile_name_url="$(echo $failed_tile_name | rev | cut -d'/' -f 1-3 | rev)"
+                     	z=$(echo "$failed_tile_name_url" | awk -F'[/.]' '{print $2}')
+                     	x=$(echo "$failed_tile_name_url" | awk -F'[/.]' '{print $3}')
+                     	y=$(echo "$failed_tile_name_url" | awk -F'[/.]' '{print $4}')
                      	counter=0
                      	max_counter=3
                      	while [[ $counter -lt $max_counter ]]; do
-                     	   wget "$tile_server/$failed_tile_name_url" -O "$failed_tile_name" -o /dev/null
+				   wget "$(get_url $tile_server $z $x $y $ext)" -O "$download_folder/$z/$x/$y.$ext" -o /dev/null
                      	   exit_status=$?
                      	   if [[ $exit_status -ne 0 ]]; then
                      		(( counter++ ))
