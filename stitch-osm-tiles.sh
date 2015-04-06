@@ -73,7 +73,7 @@ osm_custom_extension=${OSM_CUSTOM_EXTENSION:-"png"}
 #
 # The first values of each array are considered to be the defaults
 # available_providers=( "mapquest" "thunderforest" )
-available_providers=( "mapquest" "mapquest2" )
+available_providers=( "mapquest" "mapquest2" "stamen" )
 
 # MapQuest tile servers
 # http://www.mapquest.com/
@@ -99,6 +99,15 @@ mapquest2_tile_servers=(
  "http://ttiles02.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
  "http://ttiles03.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
  "http://ttiles04.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_"
+)
+# Stamen Hybrid
+stamen_available_overlays=( "toner-hybrid" )
+stamen_extension="png"
+stamen_tile_servers=( 
+ "http://a.sm.mapstack.stamen.com/_OVERLAY_"
+ "http://b.sm.mapstack.stamen.com/_OVERLAY_"
+ "http://c.sm.mapstack.stamen.com/_OVERLAY_"
+ "http://d.sm.mapstack.stamen.com/_OVERLAY_"
 )
 # # Thunderforest tile servers
 # # http://thunderforest.com/
