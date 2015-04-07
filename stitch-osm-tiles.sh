@@ -27,33 +27,32 @@
 #      That's why I use both libraries.
 #
 #         Each zoom level equivalent scale is:
-#             Level   Degree  Area              m / pixel       ~Scale
-#             0       360     whole world       156,412         1:500 Mio
-#             1       180                       78,206          1:250 Mio
-#             2       90                        39,103          1:150 Mio
-#             3       45                        19,551          1:70 Mio
-#             4       22.5                      9,776           1:35 Mio
-#             5       11.25                     4,888           1:15 Mio
-#             6       5.625                     2,444           1:10 Mio
-#             7       2.813                     1,222           1:4 Mio
-#             8       1.406                     610.984         1:2 Mio
-#             9       0.703   wide area         305.492         1:1 Mio
-#             10      0.352                     152.746         1:500,000
-#             11      0.176   area              76.373          1:250,000
-#             12      0.088                     38.187          1:150,000
-#             13      0.044   village or town   19.093          1:70,000
-#             14      0.022                     9.547           1:35,000
-#             15      0.011                     4.773           1:15,000
-#             16      0.005   small road        2.387           1:8,000
-#             17      0.003                     1.193           1:4,000
-#             18      0.001                     0.596           1:2,000
-#             19      0.0005                    0.298           1:1,000 
+#             Level   Degree  Area              m / pixel       ~Scale          Accurate-Scale
+#             0       360     whole world       156,412         1:500 Mio       559.082.264
+#             1       180                       78,206          1:250 Mio       279.541.132
+#             2       90                        39,103          1:150 Mio       139.770.566
+#             3       45                        19,551          1:70 Mio        69.885.283
+#             4       22.5                      9,776           1:35 Mio        34.942.642
+#             5       11.25                     4,888           1:15 Mio        17.471.321
+#             6       5.625                     2,444           1:10 Mio        8.735.660
+#             7       2.813                     1,222           1:4 Mio         4.367.830
+#             8       1.406                     610.984         1:2 Mio         2.183.915
+#             9       0.703   wide area         305.492         1:1 Mio         1.091.958
+#             10      0.352                     152.746         1:500,000       545.979
+#             11      0.176   area              76.373          1:250,000       272.989
+#             12      0.088                     38.187          1:150,000       136.495
+#             13      0.044   village or town   19.093          1:70,000        68.247
+#             14      0.022                     9.547           1:35,000        34.124
+#             15      0.011                     4.773           1:15,000        17.062
+#             16      0.005   small road        2.387           1:8,000         8.531
+#             17      0.003                     1.193           1:4,000         4.265
+#             18      0.001                     0.596           1:2,000         2.133
+#             19      0.0005                    0.298           1:1,000         1.066
 
 # TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
 #       Update the readme at the top of this file and the README.md file.
 #       Make subroutines for the stitching functionality?
-#       Add proper "project" functionality.
-#       Add an option to load settings from a project file.
+#       Add proper "project" functionality. Add an option to load settings from a project file.
 
 trap "exit" INT
 
