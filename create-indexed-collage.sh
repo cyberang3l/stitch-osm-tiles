@@ -5,6 +5,11 @@
 # This script will create a indexed collage of the final larged stitched tiles, and the user can quickly
 # choose which file names will have to be deleted.
 
+# In order for this script to work, you will need the packages 'graphicsmagick' and 'parallel'
+##
+# apt-get install graphicsmagick parallel
+##
+
 if [[ $# -ne 1 ]]; then
    echo "Please choose a folder with the final stitches to make an indexed collage."
    exit 1
