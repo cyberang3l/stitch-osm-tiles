@@ -49,10 +49,16 @@
 #             18      0.001                     0.596           1:2,000         2.133
 #             19      0.0005                    0.298           1:1,000         1.066
 
-# TODO: Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
+# TODO: Convert to python
+#       Add a command line parameter for tuning the parallel (multithreaded) wget downloads.
 #       Update the readme at the top of this file and the README.md file.
-#       Make subroutines for the stitching functionality?
+#       Make subroutines for the stitching functionality (In general make more subroutines when you will convert it to python)
 #       Add proper "project" functionality. Add an option to load settings from a project file.
+#       Do not call multiple times the identify command. Call it once, store the output in a variable and then parse the variables.
+#       When making the sanity checks about the type of the file, use the info that you've gotten from the identify command. Not the extension since the extension might be wrong.
+#       Add a command line parameter to allow the user to choose the max size of the stitched tiles. Now it is hardcoded in the variable $max_resolution_px
+#       Allow the user to choose different max_resolution_px for y an x. Now max-allowed-y = max-allowed-x = $max_resolution_px
+#       Currently, when a custom osm server is used, it must be using this format "http://my.osm.server/{z}/{x}/{y}.{ext}". If the user does not provide the '{z}/{x}/{y}.{ext}' part, then you should append it at the end of the custom server URL.
 
 trap "exit" INT
 
@@ -782,7 +788,7 @@ N_degrees_by_northern_most_tile: $(ytile2lat $tile_north $zoom_level)" > "$proje
    total_tiles_to_download=$(( $number_of_horizontal_tiles * $number_of_vertical_tiles ))
    downloading_now=0
    successfully_downloaded=0
-   parallel_downloads=100
+   parallel_downloads=30
    logfile="$project_folder/$zoom_level.log"
    echo "Started downloading on "$(date) > "$logfile"
    echo "Downloading $total_tiles_to_download tiles."
