@@ -100,6 +100,7 @@ mapquest2_tile_servers=(
  "http://ttiles04.mqcdn.com/tiles/1.0.0/vy/_OVERLAY_/{z}/{x}/{y}.{ext}"
 )
 # Stamen
+# http://maps.stamen.com
 stamen_available_overlays=( "toner" "toner-hybrid" "toner-labels" "toner-lines" "toner-background" "toner-lite" "watercolor" )
 stamen_extension="png"
 stamen_tile_servers=( 
