@@ -120,10 +120,10 @@ stamen_tile_servers=(
 mapbox_available_overlays=( "openstreetmap.map-inh7ifmo" )
 mapbox_extension="jpg"
 mapbox_tile_servers=( 
- "http://a.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
- "http://b.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
- "http://c.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
- "http://d.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://a.tiles.mapbox.com/v4/_OVERLAY_/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://b.tiles.mapbox.com/v4/_OVERLAY_/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://c.tiles.mapbox.com/v4/_OVERLAY_/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://d.tiles.mapbox.com/v4/_OVERLAY_/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
 )
 # # Thunderforest tile servers
 # # http://thunderforest.com/
