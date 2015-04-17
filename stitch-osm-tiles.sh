@@ -78,7 +78,7 @@ osm_custom_extension=${OSM_CUSTOM_EXTENSION:-"png"}
 #
 # The first values of each array are considered to be the defaults
 # available_providers=( "mapquest" "thunderforest" )
-available_providers=( "mapquest" "mapquest2" "stamen" )
+available_providers=( "mapquest" "mapquest2" "stamen" "mapbox" )
 
 # MapQuest tile servers
 # http://www.mapquest.com/
@@ -114,6 +114,16 @@ stamen_tile_servers=(
  "http://b.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
  "http://c.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
  "http://d.sm.mapstack.stamen.com/_OVERLAY_/{z}/{x}/{y}.{ext}"
+)
+# Mapbox Satellite
+# http://www.mapbox.com/about/maps/
+mapbox_available_overlays=( "openstreetmap.map-inh7ifmo" )
+mapbox_extension="jpg"
+mapbox_tile_servers=( 
+ "http://a.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://b.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://c.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
+ "http://d.tiles.mapbox.com/v4/_OVERLAY_/{zoom}/{x}/{y}.png?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw"
 )
 # # Thunderforest tile servers
 # # http://thunderforest.com/
