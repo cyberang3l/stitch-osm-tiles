@@ -481,6 +481,42 @@ def _command_Line_Options():
 ##################################################
 
 #----------------------------------------------------------------------
+def expand_zoom_levels(zoom_levels):
+    """
+    The zoom levels is a string composed of comma separated integers
+    and ranges of integers designated with hyphens.
+
+    This function parses this kind of string and returns an array of
+    all the zoom levels
+    """
+    provided_zoom_levels = split_strip(zoom_levels)
+    expanded_zoom_levels = []
+    for z in provided_zoom_levels:
+        zoom = split_strip(z, '-')
+        if len(zoom) == 1:
+            if is_number(zoom[0], is_int=True):
+                expanded_zoom_levels.append(int(zoom[0]))
+            else:
+                error_and_exit("Provided zoom level is not a valid integer")
+        elif len(zoom) == 2:
+            if is_number(zoom[0], is_int=True) and is_number(zoom[1], is_int=True):
+                z1 = int(zoom[0])
+                z2 = int(zoom[1])
+                if (z2 > z1):
+                    expanded_zoom_levels.extend(range(z1, z2 + 1))
+                else:
+                    expanded_zoom_levels.extend(range(z2, z1 + 1))
+            else:
+                error_and_exit("Provided zoom level is not a valid integer")
+        else:
+            # This else will basically run if the user provides something
+            # stupid like -z 0-1-6 (essentially when len(zoom) > 2)
+            error_and_exit("Error when parsing zoom level.")
+
+    # Use the OrderedDict to return unique zoom levels.
+    return list(OrderedDict.fromkeys(sorted(expanded_zoom_levels)))
+
+#----------------------------------------------------------------------
 def validate_arguments(options):
     """
     Validate and prepare the command line arguments.
@@ -495,31 +531,7 @@ def validate_arguments(options):
         os.mkdir(options.project_name)
 
     # Validate and expand the given zoom level(s)
-    provided_zoom_levels = split_strip(options.zoom_level)
-    options.zoom_level = []
-    for z in provided_zoom_levels:
-        zoom = split_strip(z, '-')
-        if len(zoom) == 1:
-            if is_number(zoom[0], is_int=True):
-                options.zoom_level.append(int(zoom[0]))
-            else:
-                error_and_exit("Provided zoom level is not a valid integer")
-        elif len(zoom) == 2:
-            if is_number(zoom[0], is_int=True) and is_number(zoom[1], is_int=True):
-                z1 = int(zoom[0])
-                z2 = int(zoom[1])
-                if (z2 > z1):
-                    options.zoom_level.extend(range(z1, z2 + 1))
-                else:
-                    options.zoom_level.extend(range(z2, z1 + 1))
-            else:
-                error_and_exit("Provided zoom level is not a valid integer")
-        else:
-            # This else will basically run if the user provides something
-            # stupid like -z 0-1-6 (essentially when len(zoom) > 2)
-            error_and_exit("Error when parsing zoom level.")
-
-    options.zoom_level = sorted(options.zoom_level)
+    options.zoom_level = expand_zoom_levels(options.zoom_level)
 
     # Validate the coordinates (we do not need to check if the coordinates are valid numbers. Argparse is already doing this for us)
     if (options.long1 < -180 or options.long1 > 180) or (options.long2 < -180 or options.long2 > 180):
@@ -556,7 +568,23 @@ def validate_arguments(options):
                     else:
                         if not options.tile_server_provider_layer:
                             options.tile_server_provider_layer = PROVIDERS[p]['layers'].keys()[0]
+
+                    # At this point we have alraedy matched the provider, so break the look
+                    # (no need to iterate through all of the providers)
                     break
+
+
+            # Check if the chosen provider/layer designates the available zoom_levels.
+            # If the yes, and the user has chosen a non-supported zoom level, exit with an error.
+            if 'zoom_levels' in PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]:
+                accepted_zoom_levels = expand_zoom_levels(PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['zoom_levels'])
+            else:
+                accepted_zoom_levels = expand_zoom_levels(PROVIDERS[options.tile_server_provider]['zoom_levels'])
+
+            for z in options.zoom_level:
+                if z not in accepted_zoom_levels:
+                    error_and_exit("Provider {}->{} supports only the following zoom levels:\n   {}\n\n"
+                                   "Chosen zoom levels:\n   {}\n".format(options.tile_server_provider, options.tile_server_provider_layer, accepted_zoom_levels, options.zoom_level))
 
 
 #----------------------------------------------------------------------
