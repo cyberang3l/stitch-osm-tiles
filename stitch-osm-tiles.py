@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 #
 # Copyright (C) 2014 Vangelis Tasoulas <vangelis@tasoulas.net>
 #
@@ -22,6 +23,8 @@ import argparse
 import logging
 import subprocess   # Needed to execute system commands. If you remove the class "executeCommand", you can safely remove this line as well
 import datetime     # If you remove the class "executeCommand", you can safely remove this line as well
+import math
+import urllib
 from collections import OrderedDict
 
 __all__ = [
@@ -401,28 +404,28 @@ def _command_Line_Options():
                         dest="long1",
                         metavar="W_DEGREES",
                         required=True,
-                        help="Set the western (W) longtitude of a bounding box for tile downloading")
+                        help="Set the western (W) longtitude of a bounding box for tile downloading. Accepted values: -180 to 179.999.")
     parser.add_argument("-e", "--long2",
                         action="store",
                         type=float,
                         dest="long2",
                         metavar="E_DEGREES",
                         required=True,
-                        help="Set the eastern (E) longtitude of a bounding box for tile downloading")
+                        help="Set the eastern (E) longtitude of a bounding box for tile downloading. Accepted values: -180 to 179.999.")
     parser.add_argument("-n", "--lat1",
                         action="store",
                         type=float,
                         dest="lat1",
                         metavar="N_DEGREES",
                         required=True,
-                        help="Set the northern (N) latitude of a bounding box for tile downloading")
+                        help="Set the northern (N) latitude of a bounding box for tile downloading. Accepted values: -85.05112 to 85.05113.")
     parser.add_argument("-s", "--lat2",
                         action="store",
                         type=float,
                         dest="lat2",
                         metavar="S_DEGREES",
                         required=True,
-                        help="Set the southern (S) latitude of a bounding box for tile downloading")
+                        help="Set the southern (S) latitude of a bounding box for tile downloading. Accepted values: -85.05112 to 85.05113.")
     parser.add_argument("-o", "--custom-osm-server",
                         action="store",
                         dest="custom_osm_server",
@@ -534,11 +537,17 @@ def validate_arguments(options):
     options.zoom_level = expand_zoom_levels(options.zoom_level)
 
     # Validate the coordinates (we do not need to check if the coordinates are valid numbers. Argparse is already doing this for us)
-    if (options.long1 < -180 or options.long1 > 180) or (options.long2 < -180 or options.long2 > 180):
-        error_and_exit("Longtitude value for 'West' or 'East' should be between -180.0 and 180.0")
+    if (options.long1 < -180 or options.long1 > 179.999) or (options.long2 < -180 or options.long2 > 179.999):
+        error_and_exit("Longtitude value for 'West' or 'East' should be between -180.0 and 179.999")
 
-    if (options.lat1 < -85.05113 or options.lat1 > 85.05113) or (options.lat2 < -85.05113 or options.lat2 > 85.05113):
-        error_and_exit("Latitude value for 'North' or 'South' should be between -85.05113 and 85.05113 in the mercator projection.")
+    if (options.lat1 < -85.05112 or options.lat1 > 85.05113) or (options.lat2 < -85.05112 or options.lat2 > 85.05113):
+        error_and_exit("Latitude value for 'North' or 'South' should be between -85.05112 and 85.05113 in the mercator projection.")
+
+    if options.long1 > options.long2:
+        error_and_exit("Longtitude 1 (West) coordinate should be smaller than longitude 2 (East).")
+
+    if options.lat1 < options.lat2:
+        error_and_exit("Latitude 1 (North) coordinate should be larger than latitude 2 (South).")
 
     # Check if the custom_osm_server is provided
     # If yes, check if the {z}/{x}/{y} placeholders are present and configure accordingly.
@@ -549,6 +558,9 @@ def validate_arguments(options):
                 options.custom_osm_server = options.custom_osm_server + "{z}/{x}/{y}.png"
             else:
                 options.custom_osm_server = options.custom_osm_server + "/{z}/{x}/{y}.png"
+
+        options.tile_server_provider = options.custom_osm_server
+        options.tile_server_provider_layer = None
     else:
         # If the custom server is not provided, use one of the available providers.
         if not options.tile_server_provider.lower() in [p.lower() for p in PROVIDERS.keys()]:
@@ -584,11 +596,135 @@ def validate_arguments(options):
             for z in options.zoom_level:
                 if z not in accepted_zoom_levels:
                     error_and_exit("Provider {}->{} supports only the following zoom levels:\n   {}\n\n"
-                                   "Chosen zoom levels:\n   {}\n".format(options.tile_server_provider, options.tile_server_provider_layer, accepted_zoom_levels, options.zoom_level))
+                                   "Chosen zoom levels:\n   {}\n".format(options.tile_server_provider,
+                                                                         options.tile_server_provider_layer,
+                                                                         accepted_zoom_levels,
+                                                                         options.zoom_level))
 
 
 #----------------------------------------------------------------------
 # TODO: Create the necessary functions.
+def get_tile_url(zoom, x, y, extension):
+    pass
+
+#----------------------------------------------------------------------
+# X and Y
+#      X goes from 0 (left edge is 180 °W) to 2^zoom − 1 (right edge is 180 °E)
+#      Y goes from 0 (top edge is 85.0511 °N) to 2^zoom − 1 (bottom edge is 85.0511 °S) in a "Mercator projection" <- THIS IS VERY IMPORTANT
+#                                                                                                           LATER WHEN I DO THE CALIBRATION.
+# For the curious, the number 85.0511 is the result of arctan(sinh(π)). By using this bound, the entire map becomes a (very large) square.
+#
+# https://help.openstreetmap.org/questions/37743/tile-coordinates-from-latlonzoom-formula-problem
+def deg2tilenums(lat_deg, lon_deg, zoom):
+    """
+    Function to return tile numbers from coordinates given in degress
+
+    http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Lon..2Flat._to_tile_numbers_2
+    """
+    lat_rad = math.radians(lat_deg)
+    n = 2.0 ** zoom
+    xtile = int((lon_deg + 180.0) / 360.0 * n)
+    ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
+
+    return (xtile, ytile)
+
+#----------------------------------------------------------------------
+def tilenums2deg(xtile, ytile, zoom):
+    """
+    Function to return coordinates given in degress from tile numbers
+
+    http://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Tile_numbers_to_lon..2Flat._2
+
+    This returns the NW-corner of the square. Use the function with xtile+1
+    and/or ytile+1 to get the other corners. With xtile+0.5 & ytile+0.5 it
+    will return the center of the tile.
+    """
+    n = 2.0 ** zoom
+    lon_deg = xtile / n * 360.0 - 180.0
+    lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * ytile / n)))
+    lat_deg = math.degrees(lat_rad)
+
+    return (lat_deg, lon_deg)
+
+
+#----------------------------------------------------------------------
+# Get the longtitude and latitude per pixel, based on the global pixel scale of the map.
+# For example, if the zoom level is 0, then only one 256x256 tile compose the complete
+# map. In this case, a y pixel value of 0 will give a latitude of ~-85deg and a y pixel
+# value of 256 will give a latitude of +85.
+# If the zoom is 3, then the whole map is 8x8 tiles, so 2048x2048 pixels. In this case
+# a y pixel value of 0 will give a latitude of ~-85deg and a y pixel value of 20248 will
+# give a latitude of +85.
+def pixel2deg(xpixel, ypixel, zoom, original_tile_size = 256):
+    """
+    Returns the longtitude and latitude of the of the given x/y pixel
+    """
+    n = 2.0**zoom
+    lon_deg = xpixel / original_tile_size / n * 360.0 - 180
+    num_pixel = math.pi - 2.0 * math.pi * ypixel / original_tile_size / n
+    lat_deg = 180.0 / math.pi * math.atan2(0.5 * (math.exp(num_pixel) - math.exp(-num_pixel) ), 1)
+
+    return (lat_deg, lon_deg)
+
+#----------------------------------------------------------------------
+def generate_OZI_map_file(filename, extension, width, height, zoom, north, west, east, sourth):
+    """
+    This function will generate a map calibration file for OziExplorer
+
+    # HOW TO CALCULATE MMB1
+    # From the official documentation: http://www.oziexplorer3.com/eng/help/map_file_format.html
+    #   The scale of the image meters/pixel, its calculated in the left / right image direction.
+    #   ***It is calculated each time OziExplorer is run, the value in the file is used when searching for maps of "more detailed" scale.***
+    #
+    # So obviously, this value is not affecting the positioning since it is recalculated when the file is loaded.
+    # Nevertheless, here is the way to calculate it:
+    #
+    # The earth is a "almost" a perfect sphere and the equatorial circumference of the earth is 40075017m (that's the maximum).
+    # However, at different latitudes the circumference changes.
+    # When we use degrees for latitude representation, the circumference at any given latitude from -90 deg to +90 deg can be
+    # calculated with the following formula:
+    #              40075017*cos(lat/180*pi)
+    #
+    #              At the equator it will always be max the latitude is zero and the cos of 0 is 1.
+    #              At the poles the latitude is +-90 degrees, and the "lat/180*pi" becomes +-0.5 and the cos of +-0.5 is 0.
+    #              At any other latitude, the circumference will get values in between.
+    #
+    # Each tile in OSM is 256x256px and each complete map is composed from 2^zoom_level tiles.
+    # Consequently, the width/height of the whole globe given in pixels, for each zoom_level is 256*2^zoom_level.
+    # Eventually, the size of each pixel at different latitudes is given by this formula:
+    #         40075017*cos(lat/180*pi)/(256*2^zoom_level.)
+    #            or
+    #         40075017*cos(lat/180*pi)/*2^(zoom_level+8)
+    #
+    # Since each tile covers a range of longtitudes and latitudes, we need to find the latitude in the middle of the tile
+    # and calculate the MMB1 value based on this.
+    """
+    pass
+
+#----------------------------------------------------------------------
+def download_tiles(tile_west, tile_east, tile_north, tile_south, zoom):
+    """
+    Download tiles for a given zoom level.
+    If the tiles are already downloaded, this function will only check the consistency
+    of the downloaded files.
+    """
+    for x in xrange(tile_west, tile_east + 1):
+        for y in xrange(tile_north, tile_south + 1):
+            print x, y
+
+#----------------------------------------------------------------------
+def stitch_tiles(tile_west, tile_east, tile_north, tile_south, zoom, max_dimensions):
+    """
+    Stitch tiles for a given zoom level in the given max dimensions
+    """
+    pass
+
+#----------------------------------------------------------------------
+def calibrate_tiles(tile_west, tile_east, tile_north, tile_south, zoom, max_dimensions):
+    """
+    Calibrate stitched tiles for a given zoom level in the given max dimensions
+    """
+    pass
 
 #----------------------------------------------------------------------
 if __name__ == '__main__':
@@ -600,7 +736,6 @@ if __name__ == '__main__':
     # Configure logging
     _configureLogging(options.loglevel)
     # Validate the command line arguments
-    print options
     validate_arguments(options)
 
     LOG.info("Welcome to " + PROGRAM_NAME + " v" + str(VERSION))
@@ -616,4 +751,46 @@ if __name__ == '__main__':
 
     print "---------------------------------"
     print options
-    pass
+
+    for zoom in options.zoom_level:
+        tile_west, tile_north = deg2tilenums(options.lat1, options.long1, zoom)
+        tile_east, tile_south = deg2tilenums(options.lat2, options.long2, zoom)
+
+        number_of_horizontal_tiles = (tile_east - tile_west) + 1
+        number_of_vertical_tiles = (tile_south - tile_north) + 1
+
+        print """\nProvider: {}
+Overlay: {}
+Zoom: {}
+longtitude1 (W): {}
+longtitude2 (E): {}
+latitude1 (N): {}
+latitude2 (S): {}
+tile_west: {}
+tile_east: {}
+tile_north: {}
+tile_south: {}
+total_tiles: {}
+W_degrees_by_western_most_tile: {}
+N_degrees_by_northern_most_tile: {}
+E_degrees_by_eastern_most_tile: {}
+S_degrees_by_southern_most_tile: {}""".format(
+            options.tile_server_provider,
+            options.tile_server_provider_layer if options.tile_server_provider_layer else "",
+            zoom,
+            options.long1,
+            options.long2,
+            options.lat1,
+            options.lat2,
+            tile_west,
+            tile_east,
+            tile_north,
+            tile_south,
+            (number_of_horizontal_tiles * number_of_vertical_tiles),
+            tilenums2deg(tile_west, tile_north, zoom)[1],
+            tilenums2deg(tile_west, tile_north, zoom)[0],
+            tilenums2deg(tile_east + 1, tile_south + 1, zoom)[1],
+            tilenums2deg(tile_east + 1, tile_south + 1, zoom)[0]
+        )
+
+        download_tiles(tile_west, tile_east, tile_north, tile_south, zoom)
