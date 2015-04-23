@@ -803,7 +803,7 @@ class stitch_osm_tiles(object):
         pass
 
     #----------------------------------------------------------------------
-    def download_tile_worker(self, worker_id, inQueue, outQueue):
+    def _download_tile_worker(self, worker_id, inQueue, outQueue):
         """
         Downloads the content (should be a tile) of the given url.
         Returns a ([graphicsMagickImageObject, imageblob], None) tuple if the file was downloaded succesfully, or a
@@ -819,7 +819,7 @@ class stitch_osm_tiles(object):
             req = urllib2.Request(url)
 
             try:
-                resp = urllib2.urlopen(req)
+                resp = urllib2.urlopen(req, timeout = 5)
             except urllib2.HTTPError as e:
                 # e.code contains the actual error code
                 retval = (e, url, download_path, 'HTTPError')
@@ -861,7 +861,7 @@ class stitch_osm_tiles(object):
             inQueue.task_done()
 
     #----------------------------------------------------------------------
-    def process_download_results_worker(self, worker_id, inQueue, progress_bar, logfile):
+    def _process_download_results_worker(self, worker_id, inQueue, progress_bar, logfile):
         while True:
             # The data received from the queue is a tuple as return by the 'download_tile_worker' threads
             result, url, download_path, errorType = inQueue.get()
@@ -886,8 +886,8 @@ class stitch_osm_tiles(object):
                 if errorType is not None:
                     # If there is an error when trying to download the first tile, just exit.
                     error_and_exit("The very first tile must be downloaded in order to continue with the rest, but unfortunately there was an error. Please retry.")
-                self._tile_width = img.size().width()
-                self._tile_height = img.size().height()
+                self._tile_width = img.columns()
+                self._tile_height = img.rows()
 
             # Update the progress bar
             with self._downloadLogFileLock:
@@ -948,19 +948,16 @@ class stitch_osm_tiles(object):
         #   and checks again the length of the list before adding more url's in the input queue.
 
         # Instantiate a thread pool with 'self.parallelDownloadThreads' number of threads
-        thread_list = []
         for i in xrange(self.parallelDownloadThreads):
-            thread_worker = threading.Thread(target=self.download_tile_worker, args=(i, self._inQueue, self._outQueue))
+            thread_worker = threading.Thread(target=self._download_tile_worker, args=(i, self._inQueue, self._outQueue))
             thread_worker.setDaemon(True)
             thread_worker.start()
-            thread_list.append(thread_worker)
 
         # Instantiate a single thread to process the results of the downloads
         downloadLogFile = open( os.path.join(self.project_folder, "zoom-{}-download.log".format(self.zoom)), 'w' )
-        thread_worker = threading.Thread(target=self.process_download_results_worker, args=(self.parallelDownloadThreads, self._outQueue, pbar, downloadLogFile))
+        thread_worker = threading.Thread(target=self._process_download_results_worker, args=(self.parallelDownloadThreads, self._outQueue, pbar, downloadLogFile))
         thread_worker.setDaemon(True)
         thread_worker.start()
-        thread_list.append(thread_worker)
 
         # The counter is mostly used to choose different tile servers if more than one tile servers are provided for the specified provider.
         counter = 1
@@ -982,13 +979,17 @@ class stitch_osm_tiles(object):
                         img = gmImage(y_path)
                         # If it is the first image we process, set the self._tile_width and self._tile_height
                         if counter == 1:
-                            self._tile_width = img.size().width()
-                            self._tile_height = img.size().height()
+                            self._tile_width = img.columns()
+                            self._tile_height = img.rows()
 
                         # If the image is already loaded successfully, but the image size differs from
                         # self._tile_height/self._tile_width, try to redownload it.
-                        if not (img.size().width() == self._tile_width and img.size().height() == self._tile_height):
+                        if not (img.columns() == self._tile_width and img.rows() == self._tile_height):
                             self._addToDownloadInputQueue(url, y_path)
+                        else:
+                            # Update the progress bar
+                            pbar.currval += 1
+                            pbar.update(pbar.currval)
                     except:
                         # We execute at this point if the image exists but it cannot be loaded succesfully.
                         # In this case, try to re-download it.
@@ -1019,11 +1020,71 @@ class stitch_osm_tiles(object):
         downloadLogFile.close()
 
     #----------------------------------------------------------------------
+    def _calculate_max_dimensions_per_stitch(self, tile_west, tile_east, tile_north, tile_south):
+        """
+        Calculate the max horizontal/vertical dimensions for the final stitches
+        """
+        number_of_horizontal_tiles = (tile_east - tile_west) + 1
+        number_of_vertical_tiles = (tile_south - tile_north) + 1
+
+        # If we do not already know the dimensions of the tiles, then read the dimensions.
+        if self._tile_height == None or self._tile_width == None:
+            x_path = os.path.join(self.project_folder, str(self.zoom), str(tile_west))
+            # TODO: Add a command line option so that the user can choose either to save on the original format, always convert to jpg, or convert to png.
+            first_y_tile_path = '{}.{}'.format(os.path.join(x_path, str(tile_north)), 'png')
+            img = gmImage(first_y_tile_path)
+            self._tile_height = img.rows()
+            self._tile_width = img.columns()
+
+        total_vertical_resolution = self._tile_height * number_of_vertical_tiles
+        total_horizontal_resolution = self._tile_width * number_of_horizontal_tiles
+
+        vertical_resolution_per_stitch = total_vertical_resolution
+        horizontal_resolution_per_stitch = total_horizontal_resolution
+
+        vertical_divide_by = 1
+        horizontal_divide_by = 1
+
+        while vertical_resolution_per_stitch > self.max_dimensions:
+            # If we have an accurate division without any remainder,
+            if total_vertical_resolution % vertical_divide_by == 0:
+                # If the accurately divided number does not result in a resolution less than
+                # self.max_dimensions, increase the divisor and try again.
+                if total_vertical_resolution / vertical_divide_by > self.max_dimensions:
+                    vertical_divide_by+=1
+                else:
+                    # Otherwise use this value for the vertical resolution
+                    # and keep this divisor
+                    vertical_resolution_per_stitch = total_vertical_resolution / vertical_divide_by
+            else:
+                # Otherwise, increase the divisor
+                vertical_divide_by+=1
+
+        # Same story as the previous while-loop, but do it for the horizontal resolution.
+        while horizontal_resolution_per_stitch > self.max_dimensions:
+            if(total_horizontal_resolution % horizontal_divide_by == 0):
+                if total_horizontal_resolution / horizontal_divide_by > self.max_dimensions:
+                    horizontal_divide_by+=1
+                else:
+                    horizontal_resolution_per_stitch = total_horizontal_resolution / horizontal_divide_by
+            else:
+                horizontal_divide_by+=1
+
+        return {
+            'total_vertical_resolution': total_vertical_resolution,
+            'total_horizontal_resolution': total_horizontal_resolution,
+            'vertical_resolution_per_stitch': vertical_resolution_per_stitch,
+            'horizontal_resolution_per_stitch': horizontal_resolution_per_stitch,
+            'vertical_divide_by': vertical_divide_by,
+            'horizontal_divide_by': horizontal_divide_by
+        }
+
+    #----------------------------------------------------------------------
     def stitch_tiles(self, tile_west, tile_east, tile_north, tile_south):
         """
         Stitch tiles for a given zoom level in the given max dimensions
         """
-        pass
+        print_(self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south))
 
     #----------------------------------------------------------------------
     def calibrate_tiles(self, tile_west, tile_east, tile_north, tile_south):
@@ -1109,3 +1170,4 @@ S_degrees_by_southern_most_tile: {}""".format(
         )
 
         tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
+        tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
