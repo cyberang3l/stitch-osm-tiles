@@ -1364,15 +1364,15 @@ if [[ $skip_stitching -eq 0 || $only_calibrate -eq 1 ]]; then
 	   # echo "$y"_"$x"
 	   # echo -e "$N"
 	   # echo -e "$S"
-	   # echo -e "$W"
-	   # echo -e "$E\n"
+	    echo -e "$W"
+	    echo -e "$E\n"
 	   echo "$(generate_OZI_map_file "$y"_"$x" "png" "$horizontal_resolution_per_stitch" "$vertical_resolution_per_stitch" "$zoom_level" "$N" "$W" "$E" "$S")" > "$stitches_folder_final"/"$y"_"$x".map
 	   echo "Generated map calibration file "$stitches_folder_final"/"$y"_"$x".map"
 	done
    done
 fi
 
-# To compose two images (sattelite with hybrid on top), use the convert command like this:
+# To compose two images (satellite with hybrid on top), use the convert command like this:
 #   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
 # Use the already generated oziexplorer map files.
 # Of course, the W, E, N, S should be exactly the same for the sat and hyb images.

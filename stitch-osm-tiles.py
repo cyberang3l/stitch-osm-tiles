@@ -21,10 +21,11 @@ import sys
 import re
 import argparse
 import logging
-import subprocess   # Needed to execute system commands. If you remove the class "executeCommand", you can safely remove this line as well
-import datetime     # If you remove the class "executeCommand", you can safely remove this line as well
+import subprocess
+import datetime
 import math
 import urllib2
+import socket
 import progressbar
 import multiprocessing
 import Queue
@@ -514,7 +515,7 @@ def _command_Line_Options():
                         dest="retry_failed",
                         help="When the tiles are downloaded, a log file with the tiles that failed to be downloaded is generated."
                         " If --retry-failed option is used, after the tiles have been downloaded the script will go through"
-                        " this log file and retry to download the failed tiles until the download is successful.")
+                        " this log file and retry to download the failed tiles until the download is successful. - NOT YET IMPLEMENTED")
     parser.add_argument("-d", "--skip-downloading",
                         action="store_true",
                         dest="skip_downloading",
@@ -831,19 +832,40 @@ class stitch_osm_tiles(object):
     # If the zoom is 3, then the whole map is 8x8 tiles, so 2048x2048 pixels. In this case
     # a y pixel value of 0 will give a latitude of ~-85deg and a y pixel value of 20248 will
     # give a latitude of +85.
-    def pixel2deg(self, xpixel, ypixel, original_tile_size = 256):
+    def pixel2deg(self, xpixel, ypixel, original_tiles_width, original_tiles_height):
         """
         Returns the longtitude and latitude of the of the given x/y pixel
         """
         n = 2.0 ** self.zoom
-        lon_deg = xpixel / original_tile_size / n * 360.0 - 180
-        num_pixel = math.pi - 2.0 * math.pi * ypixel / original_tile_size / n
+        lon_deg = float(xpixel) / original_tiles_width / n * 360.0 - 180
+
+        num_pixel = math.pi - 2.0 * math.pi * ypixel / original_tiles_height / n
         lat_deg = 180.0 / math.pi * math.atan2(0.5 * (math.exp(num_pixel) - math.exp(-num_pixel) ), 1)
 
         return (lat_deg, lon_deg)
 
     #----------------------------------------------------------------------
-    def generate_OZI_map_file(self, filename, extension, width, height, zoom, north, west, east, sourth):
+    def _convert_degrees_to_OZI_deg(self, degrees, orientation):
+        """
+        Returns a tuple with the absolute value of degrees and orientation
+        like: (int(degrees), minutes, orientation)
+
+        Provided orientation can be one of: N, S, W, E
+        Degrees can be either positive or negative degrees
+        """
+
+        if orientation == "N" or orientation == "S":
+            o = "S" if degrees < 0.0 else "N"
+        elif orientation == "W" or orientation == "E":
+            o = "W" if degrees < 0.0 else "E"
+
+        deg = abs(degrees)
+
+        return (int(deg), (deg-int(deg))*60, o)
+
+
+    #----------------------------------------------------------------------
+    def generate_OZI_map_file(self, filename, extension, width, height, zoom, N, S, W, E):
         """
         This function will generate a map calibration file for OziExplorer
 
@@ -875,7 +897,56 @@ class stitch_osm_tiles(object):
         # Since each tile covers a range of longtitudes and latitudes, we need to find the latitude in the middle of the tile
         # and calculate the MMB1 value based on this.
         """
-        pass
+        latitude_mid_of_tile = S + (N - S)/2
+        MMB1 = 40075017 * math.cos(latitude_mid_of_tile / 180 * math.pi) / 2**(zoom+8)
+
+        N_OZI = self._convert_degrees_to_OZI_deg(N, 'N')
+        S_OZI = self._convert_degrees_to_OZI_deg(S, 'S')
+        W_OZI = self._convert_degrees_to_OZI_deg(W, 'W')
+        E_OZI = self._convert_degrees_to_OZI_deg(E, 'E')
+
+        ozi_map_file = """OziExplorer Map Data File Version 2.2
+{19}
+{19}.{20}
+1,Map Code,
+WGS 84,WGS 84,   0.0000,   0.0000,WGS 84
+Reserved 1
+Reserved 2
+Magnetic Variation,,,E
+Map Projection,Mercator,PolyCal,No,AutoCalOnly,No,BSBUseWPX,No
+Point01,xy, {21}, {21}, in, deg, {0}, {1}, {2}, {6}, {7}, {8}, grid,   , , ,N
+Point02,xy, {22}, {23}, in, deg, {3}, {4}, {5}, {9}, {10}, {11}, grid,   , , ,N
+Point03,xy, {22}, {21}, in, deg, {0}, {1}, {2}, {9}, {10}, {11}, grid,   , , ,N
+Point04,xy, {21}, {23}, in, deg, {3}, {4}, {5}, {6}, {7}, {8}, grid,   , , ,N
+Projection Setup,,,,,,,,,,
+Map Feature = MF ; Map Comment = MC     These follow if they exist
+Track File = TF      These follow if they exist
+Moving Map Parameters = MM?    These follow if they exist
+MM0,Yes
+MMPNUM,4
+MMPXY,1,0,0
+MMPXY,2,{16},0
+MMPXY,3,{16},{17}
+MMPXY,4,0,{17}
+MMPLL,1, {14}, {12}
+MMPLL,2, {15}, {12}
+MMPLL,3, {15}, {13}
+MMPLL,4, {14}, {13}
+MM1B,{18}
+MOP,Map Open Position,0,0
+IWH,Map Image Width/Height,{16},{17}""".format(
+                                                N_OZI[0], N_OZI[1], N_OZI[2],
+                                                S_OZI[0], S_OZI[1], S_OZI[2],
+                                                W_OZI[0], W_OZI[1], W_OZI[2],
+                                                E_OZI[0], E_OZI[1], E_OZI[2],
+                                                N, S, W, E,
+                                                width, height, MMB1,
+                                                filename, extension,
+                                                '0'.rjust(5), str(width - 1).rjust(5), str(height - 1).rjust(5)
+                                            )
+
+        return ozi_map_file
+
 
     #----------------------------------------------------------------------
     def _download_tile_worker(self, inQueue, outQueue):
@@ -900,6 +971,8 @@ class stitch_osm_tiles(object):
                 retval = (e, url, download_path, 'HTTPError')
             except urllib2.URLError as e:
                 retval = (e, url, download_path, 'URLError')
+            except socket.timeout as e:
+                retval = (e, url, download_path, 'SocketTimeout')
             else:
                 tile = resp.read()
                 try:
@@ -1394,7 +1467,68 @@ class stitch_osm_tiles(object):
         """
         Calibrate stitched tiles for a given zoom level in the given max dimensions
         """
-        pass
+
+        dimensions = self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+
+        total_stitches = dimensions['vertical_divide_by'] * dimensions['horizontal_divide_by']
+        myProgressBarFd = sys.stderr
+        # If log level is set to 1000 (logging is disabled), or DEBUG, then redirect
+        # the progress bar to /dev/null (use os.devnull to support windows as well)
+        if LOG.getEffectiveLevel() == 1000 or LOG.getEffectiveLevel() == logging.DEBUG:
+            myProgressBarFd = open(os.devnull, "w")
+
+        widgets = ['Calibrating stitches: ', progressbar.Counter(format='%{}d'.format(len(str(total_stitches)))), '/{}: '.format(total_stitches),
+                   progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
+
+        pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_stitches, fd = myProgressBarFd).start()
+
+        stitches_path = os.path.join(self.project_folder, "stitched_maps", str(zoom))
+        if not os.path.isdir(stitches_path):
+            os.makedirs(stitches_path)
+
+        for y in xrange(dimensions['vertical_divide_by']):
+            for x in xrange(dimensions['horizontal_divide_by']):
+                # The filename and extension is used in the ozi .map file, to find the matching image map
+                filename = '{}_{}'.format(y, x)
+                # TODO: Add a command line option so that the user can choose either to save on the original format, always convert to jpg, or convert to png.
+                extension = 'png'
+
+                map_file = os.path.join(stitches_path, '{}.{}'.format(filename, 'map'))
+
+                # First find the corresponding pixels in the global map.
+                # Use +1 because if tile_west = 0, then this will return pixel number 0. while it should return pixel 1
+                # tile_west = 1 this will return 256+1 (the first pixel of the 1st tile) etc.
+                WesternMost_xpixel = tile_west * self._tile_width + 1
+                NorthernMost_ypixel = tile_north * self._tile_height + 1
+
+                W_xpixel = WesternMost_xpixel + x * dimensions['horizontal_resolution_per_stitch']
+                E_xpixel = WesternMost_xpixel + (x + 1) * dimensions['horizontal_resolution_per_stitch'] - 1
+                N_ypixel = NorthernMost_ypixel + y * dimensions['vertical_resolution_per_stitch']
+                S_ypixel = NorthernMost_ypixel + (y + 1) * dimensions['vertical_resolution_per_stitch'] - 1
+
+                # Then use the pixel2deg function to get the longtitude and latitude of the stitched tile
+                N_deg, W_deg = self.pixel2deg(W_xpixel, N_ypixel, self._tile_width, self._tile_height)
+                S_deg, E_deg = self.pixel2deg(E_xpixel, S_ypixel, self._tile_width, self._tile_height)
+
+                pbar.currval += 1
+                pbar.update(pbar.currval)
+
+                LOG.debug("Calibrating file '{}.{}' -> '{}'".format(filename, extension, map_file))
+
+                # And finally we save the map file in a file.
+                with open(map_file, 'w+') as f:
+                    f.write(
+                        self.generate_OZI_map_file(
+                            filename,
+                            extension,
+                            dimensions['horizontal_resolution_per_stitch'],
+                            dimensions['vertical_resolution_per_stitch'],
+                            self.zoom,
+                            N_deg, S_deg, W_deg, E_deg
+                        )
+                    )
+
+        pbar.finish()
 
 #----------------------------------------------------------------------
 if __name__ == '__main__':
@@ -1463,7 +1597,10 @@ S_degrees_by_southern_most_tile: {}""".format(
 
         LOG.debug(properties + "\n")
 
-        if not options.skip_downloading:
+        with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w+') as f:
+            f.write(properties)
+
+        if not options.skip_downloading and not options.only_calibrate:
             tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
 
         # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
@@ -1473,17 +1610,27 @@ S_degrees_by_southern_most_tile: {}""".format(
         properties = """{}
 total_stitched_tiles: {} ({}x{})
 resolution_per_stitch: {}x{} px ({} MPixels)
-        """.format(
-               properties,
-               dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
-               dimensions['horizontal_divide_by'],
-               dimensions['vertical_divide_by'],
-               dimensions['horizontal_resolution_per_stitch'],
-               dimensions['vertical_resolution_per_stitch'],
-               round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)
-           )
+""".format(
+       properties,
+       dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
+       dimensions['horizontal_divide_by'],
+       dimensions['vertical_divide_by'],
+       dimensions['horizontal_resolution_per_stitch'],
+       dimensions['vertical_resolution_per_stitch'],
+       round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)
+   )
 
-        if not options.skip_stitching:
+        with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w') as f:
+            f.write(properties)
+
+        if not options.skip_stitching and not options.only_calibrate:
             tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
 
+        tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
+
         LOG.info("\n" + properties)
+
+        # To compose two images (satellite with hybrid on top), use the convert command like this:
+        #   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
+        # Use the already generated oziexplorer map files.
+        # Of course, the W, E, N, S should be exactly the same for the sat and hyb images.
