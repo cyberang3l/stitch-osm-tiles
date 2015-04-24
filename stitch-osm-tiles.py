@@ -193,6 +193,58 @@ def is_number(s, is_int=False):
         return False
 
 #----------------------------------------------------------------------
+def get_physical_cores():
+    """
+    Returns the number of actual physical cores, in contrast to
+    multiprocessing.cpu_count() that return the number of cpu threads.
+
+    If hyperthreading is enabled, multiprocessing.cpu_count() will return
+    twice as many cores than what our system actually has
+    """
+
+    if sys.platform == "win32":
+        # If it is windows, use the multiprocessing because
+        # I don't have windows to test the implementation.
+        return multiprocessing.cpu_count()
+    elif sys.platform == "darwin":
+        # If it is OSX, use the multiprocessing because
+        # I don't have a MAC to test the implementation.
+        return multiprocessing.cpu_count()
+    elif sys.platform.startswith('linux'):
+        # If it is posix based OS, read /proc/cpuinfo (Linux falls under
+        # this case and that's the only supported posix OS for the moment)
+        phys_ids_encountered = []
+        total_cores = 0
+        cmd = executeCommand(['grep', 'physical id\|cpu cores', '/proc/cpuinfo'])
+        r = quick_regexp()
+        for line_no in xrange(len(cmd.getStdout())):
+            if r.search('physical id\s+:\s+(\d+)', cmd.getStdout()[line_no]):
+                if not r.groups[0] in phys_ids_encountered:
+                    phys_ids_encountered.append(r.groups[0])
+                    line_no += 1
+                    r.search('cpu cores\s+:\s+(\d+)', cmd.getStdout()[line_no])
+                    total_cores += int(r.groups[0])
+                else:
+                    line_no += 2
+
+    return total_cores
+
+#----------------------------------------------------------------------
+def instantiate_threadpool(threadpool_name, threads, worker, args):
+    """
+    Instantiates a threadpool with 'threads' number 'worker' threads
+    with the given 'args'.
+
+    args must be a tuple.
+    """
+
+    for i in xrange(threads):
+        thread_worker = threading.Thread(target=worker, args=(args))
+        thread_worker.setName('{}-{}'.format(threadpool_name, i))
+        thread_worker.setDaemon(True)
+        thread_worker.start()
+
+#----------------------------------------------------------------------
 class quick_regexp(object):
     """
     Quick regular expression class, which can be used directly in if() statements in a perl-like fashion.
@@ -380,10 +432,6 @@ def _command_Line_Options():
     argument parsing examples
     http://docs.python.org/2/library/argparse.html
     """
-    # TODO: Add two options to allow the user to choose the download concurrency and stitching concurrency.
-    #       Default value for the download concurrency will be 10, and for the stitching concurrency
-    #       multiprocessing.cpu_count()
-
     parser = argparse.ArgumentParser(description=PROGRAM_NAME + " version " + VERSION, formatter_class=SmartFormatter)
     parser.add_argument("-v", "--version",
                         action="version", default=argparse.SUPPRESS,
@@ -408,40 +456,40 @@ def _command_Line_Options():
                         default='maps_project',
                         dest="project_folder",
                         help="Choose a project name. The downloaded data and stitching operations will all be made under this folder.\n"
-                        "Default project name: 'maps_project'")
+                        "Default project folder: 'maps_project'")
     parser.add_argument("-z", "--zoom-level",
                         action="store",
                         dest="zoom_level",
                         required=True,
-                        help="The tile zoom level for download. Accepts an integer or a range like '1-10' or '1,4,7-9'.")
+                        help="The tile zoom level for download. Accepts an integer or a range like '1-10' or '1,4,7-9', for downloading multiple zoom levels for the given coordinates.")
     parser.add_argument("-w", "--long1",
                         action="store",
                         type=float,
                         dest="long1",
                         metavar="W_DEGREES",
                         required=True,
-                        help="Set the western (W) longtitude of a bounding box for tile downloading. Accepted values: -180 to 179.999.")
+                        help="The western (W) longtitude of the bounding box for tile downloading. Accepted values: -180 to 179.999.")
     parser.add_argument("-e", "--long2",
                         action="store",
                         type=float,
                         dest="long2",
                         metavar="E_DEGREES",
                         required=True,
-                        help="Set the eastern (E) longtitude of a bounding box for tile downloading. Accepted values: -180 to 179.999.")
+                        help="The eastern (E) longtitude of the bounding box for tile downloading. Accepted values: -180 to 179.999.")
     parser.add_argument("-n", "--lat1",
                         action="store",
                         type=float,
                         dest="lat1",
                         metavar="N_DEGREES",
                         required=True,
-                        help="Set the northern (N) latitude of a bounding box for tile downloading. Accepted values: -85.05112 to 85.05113.")
+                        help="The northern (N) latitude of the bounding box for tile downloading. Accepted values: -85.05112 to 85.05113.")
     parser.add_argument("-s", "--lat2",
                         action="store",
                         type=float,
                         dest="lat2",
                         metavar="S_DEGREES",
                         required=True,
-                        help="Set the southern (S) latitude of a bounding box for tile downloading. Accepted values: -85.05112 to 85.05113.")
+                        help="The southern (S) latitude of the bounding box for tile downloading. Accepted values: -85.05112 to 85.05113.")
     parser.add_argument("-o", "--custom-osm-server",
                         action="store",
                         dest="custom_osm_server",
@@ -450,8 +498,8 @@ def _command_Line_Options():
                         "contains the {z}/{x}/{y} placeholders for\n"
                         "substitution, these will be substituted with the\n"
                         "corresponding 'zoom level', 'x' and 'y' tiles during\n"
-                        "download. If not, {z}/{x}/{y}.png will be appended\n"
-                        "after the end of the provided URL. Example URL:\n"
+                        "downloading. If not, '{z}/{x}/{y}.png' will be appended\n"
+                        "after the end of the provided URL. Example custom URL:\n"
                         "'http://your.osm.server.com/osm/{z}/{x}/{y}.png?token=12345'")
     parser.add_argument("-m", "--max-stitch-size-per-side",
                         action="store",
@@ -459,21 +507,48 @@ def _command_Line_Options():
                         default=10000,
                         dest="max_resolution_px",
                         metavar="PIXELS",
-                        help="The horizontal or vertical resolution of the final stitched tiles should not exceed that of the --max-stitch-size-per-side.\n"
+                        help="The horizontal or vertical resolution of the stitched tiles should not exceed the resolution provided by this option in pixels.\n"
                         "Default size: 10000 px")
     parser.add_argument("-r", "--retry-failed",
                         action="store_true",
                         dest="retry_failed",
                         help="When the tiles are downloaded, a log file with the tiles that failed to be downloaded is generated."
-                        "If --retry-failed option is used, after the tiles have been downloaded the script will go through this log file and will retry to download the failed tiles.")
+                        " If --retry-failed option is used, after the tiles have been downloaded the script will go through"
+                        " this log file and retry to download the failed tiles until the download is successful.")
+    parser.add_argument("-d", "--skip-downloading",
+                        action="store_true",
+                        dest="skip_downloading",
+                        help="Skip downloading of the original tiles. Use this option ONLY if you are sure that"
+                        " all of the original tiles for the given coordinates have been downloaded successfully."
+                        "The downloading function is also checking the integrity of the files, so it"
+                        " is always a good idea to NOT skip the downloading. Keep in mind that the"
+                        " downloading function will not re-download already downloaded (cached) tiles,"
+                        " so you can always resume downloads.")
     parser.add_argument("-k", "--skip-stitching",
                         action="store_true",
                         dest="skip_stitching",
-                        help="Only download the original 256x256 pixel tiles, but do not stitch them onto large tiles.")
+                        help="Skip the stitching of the original tiles onto large tiles.")
     parser.add_argument("-c", "--only-calibrate",
                         action="store_true",
                         dest="only_calibrate",
                         help="When this option is enabled, the script will not download or stitch any tiles. Only OziExplorer calibration files will be generated.")
+    parser.add_argument("--download-threads",
+                        action="store",
+                        type=int,
+                        default=10,
+                        metavar="DOWN_THREADS",
+                        dest="download_threads",
+                        help="The downloading of the tiles is threaded to speed up the download significantly."
+                        " This option defines the number of concurrent download threads. Default number of download threads: 10")
+    parser.add_argument("--stitching-threads",
+                        action="store",
+                        type=int,
+                        default=get_physical_cores(),
+                        metavar="STITCH_THREADS",
+                        dest="stitching_threads",
+                        help="The stitching of the tiles is threaded."
+                        " This option defines the number of concurrent stitching threads. Default number of sitching"
+                        " threads corresponds to the number of available cores in your system: {}".format(get_physical_cores()))
     parser.add_argument("-t", "--tile-server-provider",
                         action="store",
                         dest="tile_server_provider",
@@ -662,7 +737,7 @@ class stitch_osm_tiles(object):
     """
 
     #----------------------------------------------------------------------
-    def __init__(self, zoom, tile_servers = None, project_folder = 'maps_project', parallelDownloadThreads = 10, parallelStitchingThreads = multiprocessing.cpu_count()):
+    def __init__(self, zoom, tile_servers = None, project_folder = 'maps_project', parallelDownloadThreads = 10, parallelStitchingThreads = get_physical_cores()):
         """
         zoom: the zoom level where the class will be working with.
         tile_servers: A list with all of the available tile servers that can be used for tile downloading.
@@ -692,8 +767,9 @@ class stitch_osm_tiles(object):
         self._tile_height = None
         self._tile_width = None
         self._itemsInProcessing = []
-        self._inQueue = Queue.Queue()
-        self._outQueue = Queue.Queue()
+        self._inDownloadQueue = Queue.Queue()
+        self._outDownloadQueue = Queue.Queue()
+        self._inStitchingQueue = Queue.Queue()
         self._downloadLogFileLock = threading.Lock()
 
     #----------------------------------------------------------------------
@@ -802,7 +878,7 @@ class stitch_osm_tiles(object):
         pass
 
     #----------------------------------------------------------------------
-    def _download_tile_worker(self, worker_id, inQueue, outQueue):
+    def _download_tile_worker(self, inQueue, outQueue):
         """
         Downloads the content (should be a tile) of the given url.
         Returns a ([graphicsMagickImageObject, imageblob], None) tuple if the file was downloaded succesfully, or a
@@ -813,7 +889,7 @@ class stitch_osm_tiles(object):
             # The data received from the queue is tuple (url, download_path)
             url, download_path = inQueue.get()
 
-            LOG.debug("Processing by thread {}: DOWNLOADING '{}' -> '{}'".format(worker_id, url, download_path))
+            LOG.debug("{} is DOWNLOADING '{}' -> '{}'".format(threading.currentThread().getName(), url, download_path))
 
             req = urllib2.Request(url)
 
@@ -824,9 +900,6 @@ class stitch_osm_tiles(object):
                 retval = (e, url, download_path, 'HTTPError')
             except urllib2.URLError as e:
                 retval = (e, url, download_path, 'URLError')
-            except:
-                e = sys.exc_info()[0]
-                retval = (e, url, download_path, 'UnknownDownloadError')
             else:
                 tile = resp.read()
                 try:
@@ -852,7 +925,7 @@ class stitch_osm_tiles(object):
                     img = gmImage(pgmagick.Blob(tile))
                     img.write(download_path)
                     retval = ([img, tile], url, download_path, None)
-                except:
+                except RuntimeError, e:
                     e = sys.exc_info()[0]
                     retval = (e, url, download_path, 'UnknownGraphicsMagicError')
 
@@ -860,12 +933,12 @@ class stitch_osm_tiles(object):
             inQueue.task_done()
 
     #----------------------------------------------------------------------
-    def _process_download_results_worker(self, worker_id, inQueue, progress_bar, logfile):
+    def _process_download_results_worker(self, inQueue, progress_bar, logfile):
         while True:
             # The data received from the queue is a tuple as return by the 'download_tile_worker' threads
             result, url, download_path, errorType = inQueue.get()
 
-            LOG.debug("Worker {} is processing results for url '{}'".format(worker_id, url))
+            LOG.debug("{} is PROCESSING DOWNLOADED file for url '{}'".format(threading.currentThread().getName(), url))
             time_now = time.strftime("%a %d %b %Y %H:%M:%S")
 
             # If there was an error, append in the log file.
@@ -898,17 +971,37 @@ class stitch_osm_tiles(object):
             inQueue.task_done()
 
     #----------------------------------------------------------------------
-    def _addToDownloadInputQueue(self, url, download_path):
+    def _addToDownloadInputQueue(self, args):
         """
         Helper function to add a url in the input queue for threaded processing
+
+        args must be (url, download_path) tuple
         """
+        url = args[0]
+
         # If we have many pending/unproccessed items, wait until some of the items are processed.
         while len(self._itemsInProcessing) > 2 * self.parallelDownloadThreads:
             time.sleep(0.01)
 
         # Then add the items in the queue
-        self._inQueue.put((url, download_path))
+        self._inDownloadQueue.put(args)
         self._itemsInProcessing.append(url)
+
+    #----------------------------------------------------------------------
+    def _addToStitchingInputQueue(self, args):
+        """
+        Helper function to add the needed arguments for threaded stitching
+        """
+
+        stitch = args[1]
+
+        # If we have many pending/unproccessed items, wait until some of the items are processed.
+        while len(self._itemsInProcessing) >= self.parallelStitchingThreads:
+            time.sleep(0.01)
+
+        # Then add the items in the queue
+        self._inStitchingQueue.put(args)
+        self._itemsInProcessing.append(stitch)
 
     #----------------------------------------------------------------------
     def download_tiles(self, tile_west, tile_east, tile_north, tile_south):
@@ -923,8 +1016,9 @@ class stitch_osm_tiles(object):
         total_tiles = number_of_horizontal_tiles * number_of_vertical_tiles
 
         myProgressBarFd = sys.stderr
-        # If log level is set to 1000 (logging is disabled), then redirect the progress bar to /dev/null (use os.devnull to support windows as well)
-        if LOG.getEffectiveLevel() == 1000:
+        # If log level is set to 1000 (logging is disabled), or DEBUG, then redirect
+        # the progress bar to /dev/null (use os.devnull to support windows as well)
+        if LOG.getEffectiveLevel() == 1000 or LOG.getEffectiveLevel() == logging.DEBUG:
             myProgressBarFd = open(os.devnull, "w")
 
         widgets = ['Downloading tile ', progressbar.Counter(format='%{}d'.format(len(str(total_tiles)))), '/{}: '.format(total_tiles),
@@ -947,16 +1041,12 @@ class stitch_osm_tiles(object):
         #   and checks again the length of the list before adding more url's in the input queue.
 
         # Instantiate a thread pool with 'self.parallelDownloadThreads' number of threads
-        for i in xrange(self.parallelDownloadThreads):
-            thread_worker = threading.Thread(target=self._download_tile_worker, args=(i, self._inQueue, self._outQueue))
-            thread_worker.setDaemon(True)
-            thread_worker.start()
+        instantiate_threadpool('Download-Thread', self.parallelDownloadThreads, self._download_tile_worker, (self._inDownloadQueue, self._outDownloadQueue))
 
         # Instantiate a single thread to process the results of the downloads
+        # The log file has to be opened before we start the threads, because the thread worker is using the log file.
         downloadLogFile = open( os.path.join(self.project_folder, "zoom-{}-download.log".format(self.zoom)), 'w' )
-        thread_worker = threading.Thread(target=self._process_download_results_worker, args=(self.parallelDownloadThreads, self._outQueue, pbar, downloadLogFile))
-        thread_worker.setDaemon(True)
-        thread_worker.start()
+        instantiate_threadpool('ProccessDownloaded-Thread', 1, self._process_download_results_worker, (self._outDownloadQueue, pbar, downloadLogFile))
 
         # The counter is mostly used to choose different tile servers if more than one tile servers are provided for the specified provider.
         counter = 1
@@ -972,6 +1062,8 @@ class stitch_osm_tiles(object):
                 # TODO: Add a command line option so that the user can choose either to save on the original format, always convert to jpg, or convert to png.
                 y_path = '{}.{}'.format(os.path.join(x_path, str(y)), 'png')
 
+                LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
+
                 # Before adding files in the queue, check if the file exists
                 if os.path.isfile(y_path):
                     try:
@@ -984,25 +1076,18 @@ class stitch_osm_tiles(object):
                         # If the image is already loaded successfully, but the image size differs from
                         # self._tile_height/self._tile_width, try to redownload it.
                         if not (img.columns() == self._tile_width and img.rows() == self._tile_height):
-                            self._addToDownloadInputQueue(url, y_path)
+                            self._addToDownloadInputQueue((url, y_path))
                         else:
                             # Update the progress bar
                             pbar.currval += 1
                             pbar.update(pbar.currval)
-                    except:
+                    except RuntimeError, e:
                         # We execute at this point if the image exists but it cannot be loaded succesfully.
                         # In this case, try to re-download it.
-                        self._addToDownloadInputQueue(url, y_path)
+                        self._addToDownloadInputQueue((url, y_path))
                 else:
                     # Else the file does not exist, try to download it for the first time.
-                    self._addToDownloadInputQueue(url, y_path)
-
-
-                # If we have just processed the last tile, wait for the threads to finish their work
-                # By joing the in/out Queues
-                if counter == total_tiles:
-                    self._inQueue.join()
-                    self._outQueue.join()
+                    self._addToDownloadInputQueue((url, y_path))
 
                 # If we are processing the first tile, wait until the processing completes because we have to
                 # read the width/height of this tile before downloading the rest. The rest of the tiles are
@@ -1012,6 +1097,10 @@ class stitch_osm_tiles(object):
                         time.sleep(0.01)
 
                 counter+=1
+
+        # Wait for the threads to finish their work by joing the in/out Queues
+        self._inDownloadQueue.join()
+        self._outDownloadQueue.join()
 
         pbar.finish()
 
@@ -1079,19 +1168,68 @@ class stitch_osm_tiles(object):
         }
 
     #----------------------------------------------------------------------
-    def _stitch_thumbnail(self, list_of_files, thumbnail_filepath):
+    def _stitch_thumbnail(self, img, thumb_filepath, x_res = 144, y_res = 144):
         """
+        Function to generate a thumbnail from a stitch img.
+        img is a graphicmagick Image object.
         """
 
+        LOG.debug("Generating thumbnail '{}'".format(thumb_filepath))
+
+        geometry = pgmagick.Geometry(x_res, y_res)
+        geometry.aspect(True)
+        img.scale(geometry)
+        img.write(thumb_filepath)
+
     #----------------------------------------------------------------------
-    def _stitch_tile_worker(self, list_of_files, stitch_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, only_thumbnail = False):
+    def _stitch_tile_worker(self, inQueue):
         """
         The function will get a list of input files (the paths of the files)
         and stitch them together. It will also generate a thumbnail.
-
-        If only_thumbnail = True, only the thumbnail will be generated if the
-        stitched image already exists.
         """
+
+        while True:
+            list_of_files, stitch_filepath, thumb_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, progress_bar = inQueue.get()
+
+            LOG.debug("{} is STITCHING '{}'".format(threading.currentThread().getName(), stitch_filepath))
+
+            # TODO: Find if it is possible to use the python GraphicsMagick binding to do the montage using python
+            #       code. This will have the advantage that all of the operations will be made in memory much faster
+            #       and I will save only one file in the end. Now, I do the stitching (montage) first, saving
+            #       the file on hard disk, I reload it in order to crop it and saving it again. Since the stitches
+            #       can be very large (more than 100MB per stitch is not unusual, especially if you stitch a
+            #       satellite map), writing and reading so big files to disk takes much time.
+            #
+            # Prepare the montage command to execute on command line.
+            montage_cmd = ['gm', 'montage']
+            montage_cmd.extend(list_of_files)
+            montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles), '-background', 'none', '-geometry', '+0+0', stitch_filepath])
+
+            # Stitch the images here
+            montage = executeCommand(montage_cmd)
+
+            if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
+                LOG.error("ERROR: Could not generate stitch file '{}.".format(stitch_filepath))
+            else:
+                LOG.debug("Stitch file '{}' was generated successfully.".format(stitch_filepath))
+
+            # Load the stitched image and first crop and save it....
+            LOG.debug("Cropping tile '{}' left, top: {}, {}".format(stitch_filepath, crop_left, crop_top))
+            img = gmImage(stitch_filepath)
+            img.crop('{}x{}+{}+{}'.format(x_res, y_res, crop_left, crop_top))
+            img.write(stitch_filepath)
+
+            # Second, generate a thumbnail for the final image index.
+            self._stitch_thumbnail(img, thumb_filepath)
+
+            # Update the progress bar
+            with self._downloadLogFileLock:
+                pbar_val = progress_bar.currval + 1
+                progress_bar.update(pbar_val)
+
+            self._itemsInProcessing.remove(stitch_filepath)
+
+            inQueue.task_done()
 
 
     #----------------------------------------------------------------------
@@ -1101,7 +1239,10 @@ class stitch_osm_tiles(object):
         """
         dimensions = self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
 
-        # TODO: Make the stitching multithreaded
+        total_stitches = dimensions['vertical_divide_by'] * dimensions['horizontal_divide_by']
+
+        # Create a thread pool with 'self.parallelStitchingThreads' number of threads for the stitching.
+        instantiate_threadpool('Stitching-Thread', self.parallelStitchingThreads, self._stitch_tile_worker, (self._inStitchingQueue, ))
 
         stitches_path = os.path.join(self.project_folder, "stitched_maps", str(zoom))
         thumbnails_path = os.path.join(stitches_path, "thumbs")
@@ -1112,6 +1253,19 @@ class stitch_osm_tiles(object):
             os.makedirs(thumbnails_path)
 
         counter = 1
+
+        myProgressBarFd = sys.stderr
+        # If log level is set to 1000 (logging is disabled), or DEBUG, then redirect
+        # the progress bar to /dev/null (use os.devnull to support windows as well)
+        if LOG.getEffectiveLevel() == 1000 or LOG.getEffectiveLevel() == logging.DEBUG:
+            myProgressBarFd = open(os.devnull, "w")
+
+        widgets = ['Stitching tile ', progressbar.Counter(format='%{}d'.format(len(str(total_stitches)))), '/{}: '.format(total_stitches),
+                   progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
+
+        pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_stitches, fd = myProgressBarFd).start()
+
+
         # If we have a matrix of files like the following one,
         #
         # 01   02   03   04   05   06
@@ -1145,7 +1299,6 @@ class stitch_osm_tiles(object):
 
                 # The files_stitch array stores the filename path of all the original images to be stitched in the current stitch.
                 files_stitch = []
-                LOG.debug("Preparing stitch '{}' (Progress: {}/{})".format(stitch_key, counter, dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']))
 
                 start_x_tile = int(tile_west + math.floor(x * horizontal_tiles_per_stitch))
                 end_x_tile = int(start_x_tile + math.ceil(horizontal_tiles_per_stitch))
@@ -1153,11 +1306,6 @@ class stitch_osm_tiles(object):
                 start_y_tile = int(tile_north + math.floor(y * vertical_tiles_per_stitch))
                 end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch))
 
-                LOG.debug("X tiles: {}, {} (exclusive)\n"
-                          "Y tiles: {}, {} (exclusive)".format(start_x_tile,
-                                                               end_x_tile,
-                                                               start_y_tile,
-                                                               end_y_tile))
                 for y_orig_tile in xrange(start_y_tile, end_y_tile):
                     for x_orig_tile in xrange(start_x_tile, end_x_tile):
                         x_path = os.path.join(self.project_folder, str(self.zoom), str(x_orig_tile))
@@ -1175,61 +1323,71 @@ class stitch_osm_tiles(object):
                     if not (img.rows() == dimensions['vertical_resolution_per_stitch'] or
                             img.columns() == dimensions['horizontal_resolution_per_stitch']):
                         raise RuntimeError
+                    else:
+                        if not os.path.isfile(path_to_thumb):
+                            self._stitch_thumbnail(img, path_to_thumb)
+                        pbar.currval += 1
+                        pbar.update(pbar.currval)
                 except RuntimeError, e:
-                    # TODO: Find if it is possible to use the python GraphicsMagick binding to do the montage using python
-                    #       code. This will have the advantage that all of the operations will be made in memory much faster
-                    #       and I will save only one file in the end. Now, I do the stitching (montage) first, saving
-                    #       the file on hard disk, I reload it in order to crop it and saving it again. Since the stitches
-                    #       can be very large (more than 100MB per stitch is not unusual, especially if you stitch a
-                    #       satellite map), writing and reading so big files to disk takes much time.
-                    #
-                    # Prepare the montage command to execute on command line.
-                    files_stitch.insert(0, 'gm')
-                    files_stitch.insert(1, 'montage')
-                    files_stitch.extend(['-tile', '{}x{}'.format(horizontal_tiles_per_stitch, vertical_tiles_per_stitch), '-background', 'none', '-geometry', '+0+0', path_to_stitch])
-
-                    # Stitch the images here
-                    montage = executeCommand(files_stitch)
-
-                    # Load the stitched image and first crop and save it....
-                    img = gmImage(path_to_stitch)
                     # Crop the stitched tiles as needed so that we do not have overlaps and make sure that each tile fits the given dimensions.
                     crop_from_left = x * dimensions['horizontal_resolution_per_stitch'] - self._tile_width * (start_x_tile - tile_west)
                     crop_from_top = y * dimensions['vertical_resolution_per_stitch'] - self._tile_height * (start_y_tile - tile_north)
-                    LOG.debug("Crop left, top: {}, {}".format(crop_from_left, crop_from_top))
-                    img.crop('{}x{}+{}+{}'.format(dimensions['horizontal_resolution_per_stitch'], dimensions['vertical_resolution_per_stitch'], crop_from_left, crop_from_top))
-                    img.write(path_to_stitch)
 
-                    # Second, generate a thumbnail for the final image index.
-                    geometry = pgmagick.Geometry(144, 144)
-                    geometry.aspect(True)
-                    img.scale(geometry) # Perform the resize.
-                    img.write(path_to_thumb)
+                    self._addToStitchingInputQueue((files_stitch,
+                                                    path_to_stitch,
+                                                    path_to_thumb,
+                                                    horizontal_tiles_per_stitch,
+                                                    vertical_tiles_per_stitch,
+                                                    dimensions['horizontal_resolution_per_stitch'],
+                                                    dimensions['vertical_resolution_per_stitch'],
+                                                    crop_from_left,
+                                                    crop_from_top,
+                                                    pbar))
 
                 # Add the thumb to the all_thumb_stitches array
                 all_thumb_stitches.append(path_to_thumb)
 
+                LOG.debug("Processing stitch '{}' (Progress: {}/{})".format(stitch_key, counter, dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']))
+                LOG.debug("Composed by:\n"
+                          "X tiles {}-{}\n"
+                          "Y tiles {}-{}".format(start_x_tile,
+                                                 end_x_tile - 1,
+                                                 start_y_tile,
+                                                 end_y_tile - 1))
+
                 counter += 1
 
+        self._inStitchingQueue.join()
+
+        pbar.finish()
+
+        LOG.info("Generating image index...")
         # Make a "clean" index (no labels)
         index_file = '{}-index.png'.format(stitches_path)
+        montage = executeCommand()
         if not os.path.isfile(index_file):
             montage_cmd = ['gm', 'montage']
             montage_cmd.extend(all_thumb_stitches)
             montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'], dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
-            print montage_cmd
-            montage = executeCommand(montage_cmd)
+            montage.execute(montage_cmd)
+
+        if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
+            LOG.error("ERROR: Could not generate image index '{}".format(index_file))
+        else:
+            LOG.info("Image index '{}' was generated successfully.".format(index_file))
 
         # Make one more index with labels
         index_file = '{}-index-labeled.png'.format(stitches_path)
         if not os.path.isfile(index_file):
-            montage_cmd = ['gm', 'montage', '-draw', '\'gravity South fill red stroke red text 0,7 "%f"\'', '-pointsize', '16']
+            montage_cmd = ['gm', 'montage', '-draw', 'gravity South fill red stroke red text 0,7 "%f"', '-pointsize', '16']
             montage_cmd.extend(all_thumb_stitches)
             montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'], dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
-            print montage_cmd
             montage.execute(montage_cmd)
 
-        print_(dimensions)
+        if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
+            LOG.error("ERROR: Could not generate image index '{}".format(index_file))
+        else:
+            LOG.info("Image index '{}' was generated successfully.".format(index_file))
 
     #----------------------------------------------------------------------
     def calibrate_tiles(self, tile_west, tile_east, tile_north, tile_south):
@@ -1251,19 +1409,8 @@ if __name__ == '__main__':
     validate_arguments(options)
 
     LOG.info("Welcome to " + PROGRAM_NAME + " v" + str(VERSION))
+    LOG.info("----------------------------------\n")
 
-    ######################################
-    ### Starting adding your code here ###
-    ######################################
-    #LOG.critical("CRITICAL messages are printed")
-    #LOG.error("ERROR messages are printed")
-    #LOG.warning("WARNING messages are printed")
-    #LOG.info("INFO message are printed")
-    #LOG.debug("DEBUG messages are printed")
-###
-###
-
-    print "---------------------------------"
     #print options
 
     for zoom in options.zoom_level:
@@ -1271,7 +1418,7 @@ if __name__ == '__main__':
         if not os.path.isdir(zoom_folder):
             os.mkdir(zoom_folder)
 
-        tileWorker = stitch_osm_tiles(zoom, options.tile_servers, options.project_folder)
+        tileWorker = stitch_osm_tiles(zoom, options.tile_servers, options.project_folder, options.download_threads, options.stitching_threads)
 
         tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
         tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
@@ -1280,7 +1427,7 @@ if __name__ == '__main__':
         number_of_vertical_tiles = (tile_south - tile_north) + 1
         total_tiles = number_of_horizontal_tiles * number_of_vertical_tiles
 
-        print """\nProvider: {}
+        properties = """Provider: {}
 Overlay: {}
 Zoom: {}
 longtitude1 (W): {}
@@ -1296,23 +1443,47 @@ W_degrees_by_western_most_tile: {}
 N_degrees_by_northern_most_tile: {}
 E_degrees_by_eastern_most_tile: {}
 S_degrees_by_southern_most_tile: {}""".format(
-            options.tile_server_provider,
-            options.tile_server_provider_layer if options.tile_server_provider_layer else "",
-            zoom,
-            options.long1,
-            options.long2,
-            options.lat1,
-            options.lat2,
-            tile_west,
-            tile_east,
-            tile_north,
-            tile_south,
-            (number_of_horizontal_tiles * number_of_vertical_tiles),
-            tileWorker.tilenums2deg(tile_west, tile_north)[1],
-            tileWorker.tilenums2deg(tile_west, tile_north)[0],
-            tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1],
-            tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]
-        )
+                                          options.tile_server_provider,
+                                          options.tile_server_provider_layer if options.tile_server_provider_layer else "",
+                                          zoom,
+                                          options.long1,
+                                          options.long2,
+                                          options.lat1,
+                                          options.lat2,
+                                          tile_west,
+                                          tile_east,
+                                          tile_north,
+                                          tile_south,
+                                          (number_of_horizontal_tiles * number_of_vertical_tiles),
+                                          tileWorker.tilenums2deg(tile_west, tile_north)[1],
+                                          tileWorker.tilenums2deg(tile_west, tile_north)[0],
+                                          tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1],
+                                          tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]
+                                      )
 
-        #tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
-        tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
+        LOG.debug(properties + "\n")
+
+        if not options.skip_downloading:
+            tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
+
+        # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
+        # of the original tiles in order to calculate this.
+        dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+
+        properties = """{}
+total_stitched_tiles: {} ({}x{})
+resolution_per_stitch: {}x{} px ({} MPixels)
+        """.format(
+               properties,
+               dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
+               dimensions['horizontal_divide_by'],
+               dimensions['vertical_divide_by'],
+               dimensions['horizontal_resolution_per_stitch'],
+               dimensions['vertical_resolution_per_stitch'],
+               round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)
+           )
+
+        if not options.skip_stitching:
+            tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
+
+        LOG.info("\n" + properties)
