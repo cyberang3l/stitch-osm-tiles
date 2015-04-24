@@ -34,7 +34,6 @@ import pgmagick
 import wand
 from pgmagick import Image as gmImage
 from wand.image import Image as imImage
-from wand.display import display as imDisplay
 from collections import OrderedDict
 
 __all__ = [
@@ -1084,7 +1083,101 @@ class stitch_osm_tiles(object):
         """
         Stitch tiles for a given zoom level in the given max dimensions
         """
-        print_(self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south))
+        dimensions = self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+
+        # TODO: Make the stitching multithreaded
+        # TODO: files_stitch dict is not really needed... but keep for now until you finish with the debugging.
+        files_stitch = {}
+        # TODO: In the crop_rules, add the x_left, x_right, y_top, y_bottom crops for each of large stitches.
+        crop_rules = {}
+
+        stitches_folder = os.path.join(self.project_folder, "stitched_maps", str(zoom))
+        if not os.path.isdir(stitches_folder):
+            os.makedirs(stitches_folder)
+
+        counter = 1
+        # If we have a matrix of files like the following one,
+        #
+        # 01   02   03   04   05   06
+        # 07   08   09   10   11   12
+        # 13   14   15   16   17   18
+        # 19   20   21   22   23   24
+        #
+        # and vertical_divide = horizontal_divide = 2, then we will
+        # generate 2x2=4 final stitched tiles. In this case the final
+        # tiles will be composed of the following pictures:
+        #
+        # Tile 1: 01, 02, 03, 07, 08, 09
+        # Tile 2: 04, 05, 06, 10, 11, 12
+        # Tile 3: 13, 14, 15, 19, 20, 21
+        # Tile 4: 16, 17, 18, 20, 23, 24
+        #
+        # In order to build each of the tiles, the graphicsmagick command
+        # should be given the files in the above order, and is should be
+        # asked to make 3x2 tiles for each stitch.
+        total_number_of_horizontal_tiles = (tile_east + 1) - tile_west
+        total_number_of_vertical_tiles = (tile_south + 1) - tile_north
+        horizontal_tiles_per_stitch = float(total_number_of_horizontal_tiles) / dimensions['horizontal_divide_by']
+        vertical_tiles_per_stitch = float(total_number_of_vertical_tiles) / dimensions['vertical_divide_by']
+
+        for y in xrange(dimensions['vertical_divide_by']):
+            for x in xrange(dimensions['horizontal_divide_by']):
+                # The stitch_key must contain the final image extension
+                stitch_key = '{}_{}.png'.format(y, x)
+                files_stitch[stitch_key] = []
+                LOG.debug("Preparing stitch '{}' (Progress: {}/{})".format(stitch_key, counter, dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']))
+
+                start_x_tile = int(tile_west + math.floor(x * horizontal_tiles_per_stitch))
+                end_x_tile = int(start_x_tile + math.ceil(horizontal_tiles_per_stitch))
+
+                start_y_tile = int(tile_north + math.floor(y * vertical_tiles_per_stitch))
+                end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch))
+
+                LOG.debug("X tiles: {}, {} (exclusive)\n"
+                          "Y tiles: {}, {} (exclusive)".format(start_x_tile,
+                                                               end_x_tile,
+                                                               start_y_tile,
+                                                               end_y_tile))
+                for y_orig_tile in xrange(start_y_tile, end_y_tile):
+                    for x_orig_tile in xrange(start_x_tile, end_x_tile):
+                        x_path = os.path.join(self.project_folder, str(self.zoom), str(x_orig_tile))
+                        y_path = '{}.{}'.format(os.path.join(x_path, str(y_orig_tile)), 'png')
+
+                        files_stitch[stitch_key].append(y_path)
+
+                # The montage is not implemented in the python APIs, so use the command line
+                # The command line should look like this: ''gm montage 2x2 ${files} -background none -geometry +0+0 file.png
+                path_to_stitch = os.path.join(stitches_folder, stitch_key)
+                try:
+                    img = gmImage(path_to_stitch)
+
+                    if not (img.rows() == dimensions['vertical_resolution_per_stitch'] or
+                            img.columns() == dimensions['horizontal_resolution_per_stitch']):
+                        raise RuntimeError
+                except RuntimeError, e:
+                    files_stitch[stitch_key].insert(0, 'gm')
+                    files_stitch[stitch_key].insert(1, 'montage')
+                    files_stitch[stitch_key].extend(['-tile', '{}x{}'.format(horizontal_tiles_per_stitch, vertical_tiles_per_stitch), '-background', 'none', '-geometry', '+0+0', path_to_stitch])
+
+                    montage = executeCommand(files_stitch[stitch_key])
+
+                    img = gmImage(path_to_stitch)
+                    # TODO: Find how much do I need to crop each tile!
+                    # self._tile_height = 256
+                    # self._tile_width = 256
+                    # img.rows() % self._tile_height
+                    # img.columns() % self._tile_height
+                    crop_from_left =  0
+                    crom_from_top = 0
+                    img.crop('{}x{}+{}+{}'.format(dimensions['horizontal_resolution_per_stitch'], dimensions['vertical_resolution_per_stitch'], crop_from_left, crom_from_top))
+                    img.write(path_to_stitch)
+                    # TODO: Create a thumbnail as well for the tile index.
+                    #img.display()
+
+                counter += 1
+
+
+        print_(dimensions)
 
     #----------------------------------------------------------------------
     def calibrate_tiles(self, tile_west, tile_east, tile_north, tile_south):
