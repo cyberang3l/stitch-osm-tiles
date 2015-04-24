@@ -1079,6 +1079,22 @@ class stitch_osm_tiles(object):
         }
 
     #----------------------------------------------------------------------
+    def _stitch_thumbnail(self, list_of_files, thumbnail_filepath):
+        """
+        """
+
+    #----------------------------------------------------------------------
+    def _stitch_tile_worker(self, list_of_files, stitch_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, only_thumbnail = False):
+        """
+        The function will get a list of input files (the paths of the files)
+        and stitch them together. It will also generate a thumbnail.
+
+        If only_thumbnail = True, only the thumbnail will be generated if the
+        stitched image already exists.
+        """
+
+
+    #----------------------------------------------------------------------
     def stitch_tiles(self, tile_west, tile_east, tile_north, tile_south):
         """
         Stitch tiles for a given zoom level in the given max dimensions
@@ -1086,14 +1102,14 @@ class stitch_osm_tiles(object):
         dimensions = self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
 
         # TODO: Make the stitching multithreaded
-        # TODO: files_stitch dict is not really needed... but keep for now until you finish with the debugging.
-        files_stitch = {}
-        # TODO: In the crop_rules, add the x_left, x_right, y_top, y_bottom crops for each of large stitches.
-        crop_rules = {}
 
-        stitches_folder = os.path.join(self.project_folder, "stitched_maps", str(zoom))
-        if not os.path.isdir(stitches_folder):
-            os.makedirs(stitches_folder)
+        stitches_path = os.path.join(self.project_folder, "stitched_maps", str(zoom))
+        thumbnails_path = os.path.join(stitches_path, "thumbs")
+        if not os.path.isdir(stitches_path):
+            os.makedirs(stitches_path)
+
+        if not os.path.isdir(thumbnails_path):
+            os.makedirs(thumbnails_path)
 
         counter = 1
         # If we have a matrix of files like the following one,
@@ -1120,11 +1136,15 @@ class stitch_osm_tiles(object):
         horizontal_tiles_per_stitch = float(total_number_of_horizontal_tiles) / dimensions['horizontal_divide_by']
         vertical_tiles_per_stitch = float(total_number_of_vertical_tiles) / dimensions['vertical_divide_by']
 
+        # This array stores all of the thumbnail filenames of the final stitches, in order to create a final index image in the end
+        all_thumb_stitches = []
         for y in xrange(dimensions['vertical_divide_by']):
             for x in xrange(dimensions['horizontal_divide_by']):
                 # The stitch_key must contain the final image extension
                 stitch_key = '{}_{}.png'.format(y, x)
-                files_stitch[stitch_key] = []
+
+                # The files_stitch array stores the filename path of all the original images to be stitched in the current stitch.
+                files_stitch = []
                 LOG.debug("Preparing stitch '{}' (Progress: {}/{})".format(stitch_key, counter, dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']))
 
                 start_x_tile = int(tile_west + math.floor(x * horizontal_tiles_per_stitch))
@@ -1143,11 +1163,12 @@ class stitch_osm_tiles(object):
                         x_path = os.path.join(self.project_folder, str(self.zoom), str(x_orig_tile))
                         y_path = '{}.{}'.format(os.path.join(x_path, str(y_orig_tile)), 'png')
 
-                        files_stitch[stitch_key].append(y_path)
+                        files_stitch.append(y_path)
 
                 # The montage is not implemented in the python APIs, so use the command line
                 # The command line should look like this: ''gm montage 2x2 ${files} -background none -geometry +0+0 file.png
-                path_to_stitch = os.path.join(stitches_folder, stitch_key)
+                path_to_stitch = os.path.join(stitches_path, stitch_key)
+                path_to_thumb = os.path.join(thumbnails_path, stitch_key)
                 try:
                     img = gmImage(path_to_stitch)
 
@@ -1155,27 +1176,58 @@ class stitch_osm_tiles(object):
                             img.columns() == dimensions['horizontal_resolution_per_stitch']):
                         raise RuntimeError
                 except RuntimeError, e:
-                    files_stitch[stitch_key].insert(0, 'gm')
-                    files_stitch[stitch_key].insert(1, 'montage')
-                    files_stitch[stitch_key].extend(['-tile', '{}x{}'.format(horizontal_tiles_per_stitch, vertical_tiles_per_stitch), '-background', 'none', '-geometry', '+0+0', path_to_stitch])
+                    # TODO: Find if it is possible to use the python GraphicsMagick binding to do the montage using python
+                    #       code. This will have the advantage that all of the operations will be made in memory much faster
+                    #       and I will save only one file in the end. Now, I do the stitching (montage) first, saving
+                    #       the file on hard disk, I reload it in order to crop it and saving it again. Since the stitches
+                    #       can be very large (more than 100MB per stitch is not unusual, especially if you stitch a
+                    #       satellite map), writing and reading so big files to disk takes much time.
+                    #
+                    # Prepare the montage command to execute on command line.
+                    files_stitch.insert(0, 'gm')
+                    files_stitch.insert(1, 'montage')
+                    files_stitch.extend(['-tile', '{}x{}'.format(horizontal_tiles_per_stitch, vertical_tiles_per_stitch), '-background', 'none', '-geometry', '+0+0', path_to_stitch])
 
-                    montage = executeCommand(files_stitch[stitch_key])
+                    # Stitch the images here
+                    montage = executeCommand(files_stitch)
 
+                    # Load the stitched image and first crop and save it....
                     img = gmImage(path_to_stitch)
-                    # TODO: Find how much do I need to crop each tile!
-                    # self._tile_height = 256
-                    # self._tile_width = 256
-                    # img.rows() % self._tile_height
-                    # img.columns() % self._tile_height
-                    crop_from_left =  0
-                    crom_from_top = 0
-                    img.crop('{}x{}+{}+{}'.format(dimensions['horizontal_resolution_per_stitch'], dimensions['vertical_resolution_per_stitch'], crop_from_left, crom_from_top))
+                    # Crop the stitched tiles as needed so that we do not have overlaps and make sure that each tile fits the given dimensions.
+                    crop_from_left = x * dimensions['horizontal_resolution_per_stitch'] - self._tile_width * (start_x_tile - tile_west)
+                    crop_from_top = y * dimensions['vertical_resolution_per_stitch'] - self._tile_height * (start_y_tile - tile_north)
+                    LOG.debug("Crop left, top: {}, {}".format(crop_from_left, crop_from_top))
+                    img.crop('{}x{}+{}+{}'.format(dimensions['horizontal_resolution_per_stitch'], dimensions['vertical_resolution_per_stitch'], crop_from_left, crop_from_top))
                     img.write(path_to_stitch)
-                    # TODO: Create a thumbnail as well for the tile index.
-                    #img.display()
+
+                    # Second, generate a thumbnail for the final image index.
+                    geometry = pgmagick.Geometry(144, 144)
+                    geometry.aspect(True)
+                    img.scale(geometry) # Perform the resize.
+                    img.write(path_to_thumb)
+
+                # Add the thumb to the all_thumb_stitches array
+                all_thumb_stitches.append(path_to_thumb)
 
                 counter += 1
 
+        # Make a "clean" index (no labels)
+        index_file = '{}-index.png'.format(stitches_path)
+        if not os.path.isfile(index_file):
+            montage_cmd = ['gm', 'montage']
+            montage_cmd.extend(all_thumb_stitches)
+            montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'], dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
+            print montage_cmd
+            montage = executeCommand(montage_cmd)
+
+        # Make one more index with labels
+        index_file = '{}-index-labeled.png'.format(stitches_path)
+        if not os.path.isfile(index_file):
+            montage_cmd = ['gm', 'montage', '-draw', '\'gravity South fill red stroke red text 0,7 "%f"\'', '-pointsize', '16']
+            montage_cmd.extend(all_thumb_stitches)
+            montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'], dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
+            print montage_cmd
+            montage.execute(montage_cmd)
 
         print_(dimensions)
 
@@ -1262,5 +1314,5 @@ S_degrees_by_southern_most_tile: {}""".format(
             tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]
         )
 
-        tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
+        #tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
         tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
