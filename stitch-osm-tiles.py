@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+# apt-get install python-progressbar python-pgmagick python-wand
+
 import os
 import sys
 import re
@@ -1393,7 +1395,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 try:
                     img = gmImage(path_to_stitch)
 
-                    if not (img.rows() == dimensions['vertical_resolution_per_stitch'] or
+                    if not (img.rows() == dimensions['vertical_resolution_per_stitch'] and
                             img.columns() == dimensions['horizontal_resolution_per_stitch']):
                         raise RuntimeError
                     else:
