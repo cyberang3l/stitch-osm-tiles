@@ -957,93 +957,104 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         Returns a ([graphicsMagickImageObject, imageblob], None) tuple if the file was downloaded succesfully, or a
         tuple with the error object and a stritg with the type of the error.
         """
+        try:
+            while True:
+                # The data received from the queue is tuple (url, download_path)
+                url, download_path = inQueue.get()
 
-        while True:
-            # The data received from the queue is tuple (url, download_path)
-            url, download_path = inQueue.get()
+                LOG.debug("{} is DOWNLOADING '{}' -> '{}'".format(threading.currentThread().getName(), url, download_path))
 
-            LOG.debug("{} is DOWNLOADING '{}' -> '{}'".format(threading.currentThread().getName(), url, download_path))
+                req = urllib2.Request(url)
 
-            req = urllib2.Request(url)
-
-            try:
-                resp = urllib2.urlopen(req, timeout = 5)
-            except urllib2.HTTPError as e:
-                # e.code contains the actual error code
-                retval = (e, url, download_path, 'HTTPError')
-            except urllib2.URLError as e:
-                retval = (e, url, download_path, 'URLError')
-            except socket.timeout as e:
-                retval = (e, url, download_path, 'SocketTimeout')
-            else:
-                tile = resp.read()
                 try:
-                    ## For direct saving of the downloaded file.
-                    #f = open( download_path, 'w' )
-                    #f.write(tile)
-                    #f.close()
+                    resp = urllib2.urlopen(req, timeout = 5)
+                except urllib2.HTTPError as e:
+                    # e.code contains the actual error code
+                    retval = (e, url, download_path, 'HTTPError')
+                except urllib2.URLError as e:
+                    retval = (e, url, download_path, 'URLError')
+                except socket.timeout as e:
+                    retval = (e, url, download_path, 'SocketTimeout')
+                else:
+                    tile = resp.read()
+                    try:
+                        ## For direct saving of the downloaded file.
+                        #f = open( download_path, 'w' )
+                        #f.write(tile)
+                        #f.close()
 
-                    ## Load the images with imagemagick
-                    #img = imImage(blob=tile)
+                        ## Load the images with imagemagick
+                        #img = imImage(blob=tile)
 
-                    ## Find the extension of the file by reading its format
-                    #if img.format.lower() == 'jpeg':
-                        #ext = 'jpg'
-                    #elif img.format.lower() == 'png':
-                        #ext = 'png'
-                    #print img.width
-                    #print img.height
-                    #img.compression_quality = 95
-                    #img.totalColors = 10
-                    #img.save(filename=y_path)
+                        ## Find the extension of the file by reading its format
+                        #if img.format.lower() == 'jpeg':
+                            #ext = 'jpg'
+                        #elif img.format.lower() == 'png':
+                            #ext = 'png'
+                        #print img.width
+                        #print img.height
+                        #img.compression_quality = 95
+                        #img.totalColors = 10
+                        #img.save(filename=y_path)
 
-                    img = gmImage(pgmagick.Blob(tile))
-                    img.write(download_path)
-                    retval = ([img, tile], url, download_path, None)
-                except RuntimeError, e:
-                    e = sys.exc_info()[0]
-                    retval = (e, url, download_path, 'UnknownGraphicsMagicError')
+                        img = gmImage(pgmagick.Blob(tile))
+                        img.write(download_path)
+                        retval = ([img, tile], url, download_path, None)
+                    except RuntimeError, e:
+                        e = sys.exc_info()[0]
+                        retval = (e, url, download_path, 'UnknownGraphicsMagicError')
 
-            outQueue.put(retval)
+                outQueue.put(retval)
+                inQueue.task_done()
+        except KeyboardInterrupt:
             inQueue.task_done()
+            exit(1)
 
     #----------------------------------------------------------------------
     def _process_download_results_worker(self, inQueue, progress_bar, logfile):
-        while True:
-            # The data received from the queue is a tuple as return by the 'download_tile_worker' threads
-            result, url, download_path, errorType = inQueue.get()
+        """
+        Handle the completed downloads.
+        Saving the file and writing into log file if a download error occured.
+        """
+        try:
+            while True:
+                # The data received from the queue is a tuple as return by the 'download_tile_worker' threads
+                result, url, download_path, errorType = inQueue.get()
 
-            LOG.debug("{} is PROCESSING DOWNLOADED file for url '{}'".format(threading.currentThread().getName(), url))
-            time_now = time.strftime("%a %d %b %Y %H:%M:%S")
+                LOG.debug("{} is PROCESSING DOWNLOADED file for url '{}'".format(threading.currentThread().getName(), url))
+                time_now = time.strftime("%a %d %b %Y %H:%M:%S")
 
-            # If there was an error, append in the log file.
-            if errorType is not None:
-                # Use the lock to make sure that threads do not interfere
-                with self._downloadLogFileLock:
-                    logfile.write("{} - ERROR:'{}' -> '{}'\n".format(time_now, url, download_path))
-            else:
-                img, tile = result
-
-            # Ιf it is the first image we process, update the _tile_width and _tile_height
-            # When we download the first image, progress_bar is just initialized, so progress_bar.currval == 0
-            # Also, when we process the first image, we are waiting for the processing to complete before adding
-            # more items for threaded processing in the queue, so we are sure that when progress_bar.currval == 0
-            # we actually process the first image.
-            if progress_bar.currval == 0:
+                # If there was an error, append in the log file.
                 if errorType is not None:
-                    # If there is an error when trying to download the first tile, just exit.
-                    error_and_exit("The very first tile must be downloaded in order to continue with the rest, but unfortunately there was an error. Please retry.")
-                self._tile_width = img.columns()
-                self._tile_height = img.rows()
+                    # Use the lock to make sure that threads do not interfere
+                    with self._downloadLogFileLock:
+                        logfile.write("{} - ERROR:'{}' -> '{}'\n".format(time_now, url, download_path))
+                else:
+                    img, tile = result
 
-            # Update the progress bar
-            with self._downloadLogFileLock:
-                pbar_val = progress_bar.currval + 1
-                progress_bar.update(pbar_val)
+                # Ιf it is the first image we process, update the _tile_width and _tile_height
+                # When we download the first image, progress_bar is just initialized, so progress_bar.currval == 0
+                # Also, when we process the first image, we are waiting for the processing to complete before adding
+                # more items for threaded processing in the queue, so we are sure that when progress_bar.currval == 0
+                # we actually process the first image.
+                if progress_bar.currval == 0:
+                    if errorType is not None:
+                        # If there is an error when trying to download the first tile, just exit.
+                        error_and_exit("The very first tile must be downloaded in order to continue with the rest, but unfortunately there was an error. Please retry.")
+                    self._tile_width = img.columns()
+                    self._tile_height = img.rows()
 
-            self._itemsInProcessing.remove(url)
+                # Update the progress bar
+                with self._downloadLogFileLock:
+                    pbar_val = progress_bar.currval + 1
+                    progress_bar.update(pbar_val)
 
+                self._itemsInProcessing.remove(url)
+
+                inQueue.task_done()
+        except KeyboardInterrupt:
             inQueue.task_done()
+            exit(1)
 
     #----------------------------------------------------------------------
     def _addToDownloadInputQueue(self, args):
@@ -1262,50 +1273,52 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         The function will get a list of input files (the paths of the files)
         and stitch them together. It will also generate a thumbnail.
         """
+        try:
+            while True:
+                list_of_files, stitch_filepath, thumb_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, progress_bar = inQueue.get()
 
-        while True:
-            list_of_files, stitch_filepath, thumb_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, progress_bar = inQueue.get()
+                LOG.debug("{} is STITCHING '{}'".format(threading.currentThread().getName(), stitch_filepath))
 
-            LOG.debug("{} is STITCHING '{}'".format(threading.currentThread().getName(), stitch_filepath))
+                # TODO: Find if it is possible to use the python GraphicsMagick binding to do the montage using python
+                #       code. This will have the advantage that all of the operations will be made in memory much faster
+                #       and I will save only one file in the end. Now, I do the stitching (montage) first, saving
+                #       the file on hard disk, I reload it in order to crop it and saving it again. Since the stitches
+                #       can be very large (more than 100MB per stitch is not unusual, especially if you stitch a
+                #       satellite map), writing and reading so big files to disk takes much time.
+                #
+                # Prepare the montage command to execute on command line.
+                montage_cmd = ['gm', 'montage']
+                montage_cmd.extend(list_of_files)
+                montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles), '-background', 'none', '-geometry', '+0+0', stitch_filepath])
 
-            # TODO: Find if it is possible to use the python GraphicsMagick binding to do the montage using python
-            #       code. This will have the advantage that all of the operations will be made in memory much faster
-            #       and I will save only one file in the end. Now, I do the stitching (montage) first, saving
-            #       the file on hard disk, I reload it in order to crop it and saving it again. Since the stitches
-            #       can be very large (more than 100MB per stitch is not unusual, especially if you stitch a
-            #       satellite map), writing and reading so big files to disk takes much time.
-            #
-            # Prepare the montage command to execute on command line.
-            montage_cmd = ['gm', 'montage']
-            montage_cmd.extend(list_of_files)
-            montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles), '-background', 'none', '-geometry', '+0+0', stitch_filepath])
+                # Stitch the images here
+                montage = executeCommand(montage_cmd)
 
-            # Stitch the images here
-            montage = executeCommand(montage_cmd)
+                if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
+                    LOG.error("ERROR: Could not generate stitch file '{}.".format(stitch_filepath))
+                else:
+                    LOG.debug("Stitch file '{}' was generated successfully.".format(stitch_filepath))
 
-            if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
-                LOG.error("ERROR: Could not generate stitch file '{}.".format(stitch_filepath))
-            else:
-                LOG.debug("Stitch file '{}' was generated successfully.".format(stitch_filepath))
+                # Load the stitched image and first crop and save it....
+                LOG.debug("Cropping tile '{}' left, top: {}, {}".format(stitch_filepath, crop_left, crop_top))
+                img = gmImage(stitch_filepath)
+                img.crop('{}x{}+{}+{}'.format(x_res, y_res, crop_left, crop_top))
+                img.write(stitch_filepath)
 
-            # Load the stitched image and first crop and save it....
-            LOG.debug("Cropping tile '{}' left, top: {}, {}".format(stitch_filepath, crop_left, crop_top))
-            img = gmImage(stitch_filepath)
-            img.crop('{}x{}+{}+{}'.format(x_res, y_res, crop_left, crop_top))
-            img.write(stitch_filepath)
+                # Second, generate a thumbnail for the final image index.
+                self._stitch_thumbnail(img, thumb_filepath)
 
-            # Second, generate a thumbnail for the final image index.
-            self._stitch_thumbnail(img, thumb_filepath)
+                # Update the progress bar
+                with self._downloadLogFileLock:
+                    pbar_val = progress_bar.currval + 1
+                    progress_bar.update(pbar_val)
 
-            # Update the progress bar
-            with self._downloadLogFileLock:
-                pbar_val = progress_bar.currval + 1
-                progress_bar.update(pbar_val)
+                self._itemsInProcessing.remove(stitch_filepath)
 
-            self._itemsInProcessing.remove(stitch_filepath)
-
+                inQueue.task_done()
+        except KeyboardInterrupt:
             inQueue.task_done()
-
+            exit(1)
 
     #----------------------------------------------------------------------
     def stitch_tiles(self, tile_west, tile_east, tile_north, tile_south):
@@ -1365,6 +1378,9 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         horizontal_tiles_per_stitch = float(total_number_of_horizontal_tiles) / dimensions['horizontal_divide_by']
         vertical_tiles_per_stitch = float(total_number_of_vertical_tiles) / dimensions['vertical_divide_by']
 
+        print horizontal_tiles_per_stitch
+        print vertical_tiles_per_stitch
+
         # This array stores all of the thumbnail filenames of the final stitches, in order to create a final index image in the end
         all_thumb_stitches = []
         for y in xrange(dimensions['vertical_divide_by']):
@@ -1376,11 +1392,27 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 files_stitch = []
 
                 start_x_tile = int(tile_west + math.floor(x * horizontal_tiles_per_stitch))
-                end_x_tile = int(start_x_tile + math.ceil(horizontal_tiles_per_stitch))
-
                 start_y_tile = int(tile_north + math.floor(y * vertical_tiles_per_stitch))
-                end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch))
 
+                # Crop the stitched tiles as needed so that we do not have overlaps and make sure that each tile fits the given dimensions.
+                crop_from_left = x * dimensions['horizontal_resolution_per_stitch'] - self._tile_width * (start_x_tile - tile_west)
+                crop_from_top = y * dimensions['vertical_resolution_per_stitch'] - self._tile_height * (start_y_tile - tile_north)
+
+                # The variables horizontal_tiles_per_stitch and vertical_tiles_per_stitch are float numbers, since the stitches
+                # may need to be composed out of e.g. 25 tiles + 64 pixels. This is 25.25 tiles if each tile is 256x256 pixels.
+                # In this case, we might come in a situation that we actually need to process 27 tiles in order to stitch the final
+                # tile. 25 whole tiles, and it might be that we have to get 32 pixels from a tile that was used in a previous stitch
+                # and another 32 pixels from a tile that it will be partly used for the next stitch. These 32 + 32 pixels make up
+                # for the additional 0.25 tiles (remember in this example we need 25.25 horizontal tiles per stitch) but this
+                # additional 0.25 tiles might be located either on a tile before the whole 25 tiles, after, or shared in one tile
+                # before and one after. If that's the case, the crop_from_left variable has the value 256 - 32 = 224, and since
+                # these 224 pixels will be cropped from the start tile, we need to add them in the horizontal_tiles_per_stitch
+                # with the 'float(crop_from_left) / self._tile_width'.
+                end_x_tile = int(start_x_tile + math.ceil(horizontal_tiles_per_stitch + float(crop_from_left) / self._tile_width))
+                end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch + float(crop_from_top) / self._tile_width))
+
+                # The end tiles are excluded... So for the current stitch, we
+                # actually process from 'start_x_tile' until 'end_x_tile - 1'
                 for y_orig_tile in xrange(start_y_tile, end_y_tile):
                     for x_orig_tile in xrange(start_x_tile, end_x_tile):
                         x_path = os.path.join(self.project_folder, str(self.zoom), str(x_orig_tile))
@@ -1404,15 +1436,11 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                         pbar.currval += 1
                         pbar.update(pbar.currval)
                 except RuntimeError, e:
-                    # Crop the stitched tiles as needed so that we do not have overlaps and make sure that each tile fits the given dimensions.
-                    crop_from_left = x * dimensions['horizontal_resolution_per_stitch'] - self._tile_width * (start_x_tile - tile_west)
-                    crop_from_top = y * dimensions['vertical_resolution_per_stitch'] - self._tile_height * (start_y_tile - tile_north)
-
                     self._addToStitchingInputQueue((files_stitch,
                                                     path_to_stitch,
                                                     path_to_thumb,
-                                                    horizontal_tiles_per_stitch,
-                                                    vertical_tiles_per_stitch,
+                                                    end_x_tile - start_x_tile,
+                                                    end_y_tile - start_y_tile,
                                                     dimensions['horizontal_resolution_per_stitch'],
                                                     dimensions['vertical_resolution_per_stitch'],
                                                     crop_from_left,
@@ -1549,21 +1577,23 @@ if __name__ == '__main__':
 
     #print options
 
-    for zoom in options.zoom_level:
-        zoom_folder = os.path.join(options.project_folder, str(zoom))
-        if not os.path.isdir(zoom_folder):
-            os.mkdir(zoom_folder)
+    try:
 
-        tileWorker = stitch_osm_tiles(zoom, options.tile_servers, options.project_folder, options.download_threads, options.stitching_threads)
+        for zoom in options.zoom_level:
+            zoom_folder = os.path.join(options.project_folder, str(zoom))
+            if not os.path.isdir(zoom_folder):
+                os.mkdir(zoom_folder)
 
-        tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
-        tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
+            tileWorker = stitch_osm_tiles(zoom, options.tile_servers, options.project_folder, options.download_threads, options.stitching_threads)
 
-        number_of_horizontal_tiles = (tile_east - tile_west) + 1
-        number_of_vertical_tiles = (tile_south - tile_north) + 1
-        total_tiles = number_of_horizontal_tiles * number_of_vertical_tiles
+            tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
+            tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
 
-        properties = """Provider: {}
+            number_of_horizontal_tiles = (tile_east - tile_west) + 1
+            number_of_vertical_tiles = (tile_south - tile_north) + 1
+            total_tiles = number_of_horizontal_tiles * number_of_vertical_tiles
+
+            properties = """Provider: {}
 Overlay: {}
 Zoom: {}
 longtitude1 (W): {}
@@ -1597,19 +1627,19 @@ S_degrees_by_southern_most_tile: {}""".format(
                                           tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]
                                       )
 
-        LOG.debug(properties + "\n")
+            LOG.debug(properties + "\n")
 
-        with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w+') as f:
-            f.write(properties)
+            with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w+') as f:
+                f.write(properties)
 
-        if not options.skip_downloading and not options.only_calibrate:
-            tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
+            if not options.skip_downloading and not options.only_calibrate:
+                tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
 
-        # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
-        # of the original tiles in order to calculate this.
-        dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+            # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
+            # of the original tiles in order to calculate this.
+            dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
 
-        properties = """{}
+            properties = """{}
 total_stitched_tiles: {} ({}x{})
 resolution_per_stitch: {}x{} px ({} MPixels)
 """.format(
@@ -1622,17 +1652,21 @@ resolution_per_stitch: {}x{} px ({} MPixels)
        round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)
    )
 
-        with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w') as f:
-            f.write(properties)
+            with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w') as f:
+                f.write(properties)
 
-        if not options.skip_stitching and not options.only_calibrate:
-            tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
+            if not options.skip_stitching and not options.only_calibrate:
+                tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
 
-        tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
+            tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
 
-        LOG.info("\n" + properties)
+            LOG.info("\n" + properties)
 
-        # To compose two images (satellite with hybrid on top), use the convert command like this:
-        #   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
-        # Use the already generated oziexplorer map files.
-        # Of course, the W, E, N, S should be exactly the same for the sat and hyb images.
+            # To compose two images (satellite with hybrid on top), use the convert command like this:
+            #   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
+            # Use the already generated oziexplorer map files.
+            # Of course, the W, E, N, S should be exactly the same for the sat and hyb images.
+    except KeyboardInterrupt:
+        # If received Ctrl+C, exit without printing a backtrace (change line as well..).
+        LOG.critical("\n")
+        exit(0)
