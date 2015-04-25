@@ -1289,7 +1289,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # Prepare the montage command to execute on command line.
                 montage_cmd = ['gm', 'montage']
                 montage_cmd.extend(list_of_files)
-                montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles), '-background', 'none', '-geometry', '+0+0', stitch_filepath])
+                # Run the montage, but do not save into a file! Instead, redirect a png output to stdout. Since the stdout is binary
+                # data and stored in memory, we use pgmagick.Blob to load it in a pgmagick object and crop it later without having to
+                # write a intermediate file on hard disk in between.
+                montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles), '-background', 'none', '-geometry', '+0+0', 'png:-'])
 
                 # Stitch the images here
                 montage = executeCommand(montage_cmd)
@@ -1297,16 +1300,16 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
                     LOG.error("ERROR: Could not generate stitch file '{}.".format(stitch_filepath))
                 else:
-                    LOG.debug("Stitch file '{}' was generated successfully.".format(stitch_filepath))
+                    # Load the stitched image and first crop and save it....
+                    LOG.debug("Cropping tile '{}' left, top: {}, {}".format(stitch_filepath, crop_left, crop_top))
+                    # Use a Blob to load the output of the montage command we executed earlier.
+                    img = gmImage(pgmagick.Blob(montage.getStdout(getList=False)))
+                    img.crop('{}x{}+{}+{}'.format(x_res, y_res, crop_left, crop_top))
+                    LOG.debug("Saving tile '{}'".format(stitch_filepath))
+                    img.write(stitch_filepath)
 
-                # Load the stitched image and first crop and save it....
-                LOG.debug("Cropping tile '{}' left, top: {}, {}".format(stitch_filepath, crop_left, crop_top))
-                img = gmImage(stitch_filepath)
-                img.crop('{}x{}+{}+{}'.format(x_res, y_res, crop_left, crop_top))
-                img.write(stitch_filepath)
-
-                # Second, generate a thumbnail for the final image index.
-                self._stitch_thumbnail(img, thumb_filepath)
+                    # Second, generate a thumbnail for the final image index.
+                    self._stitch_thumbnail(img, thumb_filepath)
 
                 # Update the progress bar
                 with self._downloadLogFileLock:
