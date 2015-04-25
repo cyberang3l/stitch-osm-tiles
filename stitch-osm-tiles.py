@@ -1378,9 +1378,6 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         horizontal_tiles_per_stitch = float(total_number_of_horizontal_tiles) / dimensions['horizontal_divide_by']
         vertical_tiles_per_stitch = float(total_number_of_vertical_tiles) / dimensions['vertical_divide_by']
 
-        print horizontal_tiles_per_stitch
-        print vertical_tiles_per_stitch
-
         # This array stores all of the thumbnail filenames of the final stitches, in order to create a final index image in the end
         all_thumb_stitches = []
         for y in xrange(dimensions['vertical_divide_by']):
@@ -1409,7 +1406,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # these 224 pixels will be cropped from the start tile, we need to add them in the horizontal_tiles_per_stitch
                 # with the 'float(crop_from_left) / self._tile_width'.
                 end_x_tile = int(start_x_tile + math.ceil(horizontal_tiles_per_stitch + float(crop_from_left) / self._tile_width))
-                end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch + float(crop_from_top) / self._tile_width))
+                end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch + float(crop_from_top) / self._tile_height))
 
                 # The end tiles are excluded... So for the current stitch, we
                 # actually process from 'start_x_tile' until 'end_x_tile - 1'
