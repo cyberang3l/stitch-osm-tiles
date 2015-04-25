@@ -1300,13 +1300,6 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
                 LOG.debug("{} is STITCHING '{}'".format(threading.currentThread().getName(), stitch_filepath))
 
-                # TODO: Find if it is possible to use the python GraphicsMagick binding to do the montage using python
-                #       code. This will have the advantage that all of the operations will be made in memory much faster
-                #       and I will save only one file in the end. Now, I do the stitching (montage) first, saving
-                #       the file on hard disk, I reload it in order to crop it and saving it again. Since the stitches
-                #       can be very large (more than 100MB per stitch is not unusual, especially if you stitch a
-                #       satellite map), writing and reading so big files to disk takes much time.
-                #
                 # Prepare the montage command to execute on command line.
                 montage_cmd = ['gm', 'montage']
                 montage_cmd.extend(list_of_files)
