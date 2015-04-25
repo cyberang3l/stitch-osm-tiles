@@ -512,6 +512,19 @@ def _command_Line_Options():
                         metavar="PIXELS",
                         help="The horizontal or vertical resolution of the stitched tiles should not exceed the resolution provided by this option in pixels.\n"
                         "Default size: 10000 px")
+    parser.add_argument("--save-tile-format",
+                        action="store",
+                        dest="tile_format",
+                        choices=["png", "jpg", "original"],
+                        default="original",
+                        metavar="IMG_FMT",
+                        help="R|The format to save the downloaded tiles.\n"
+                        "  Available choices:\n"
+                        "     'png'\n"
+                        "     'jpg'\n"
+                        "     'original' <- This is the default and it will\n"
+                        "                   just save the tiles in the format\n"
+                        "                   provided by the provider.")
     parser.add_argument("-r", "--retry-failed",
                         action="store_true",
                         dest="retry_failed",
@@ -727,6 +740,14 @@ def validate_arguments(options):
             if layer_extension:
                 server_string = re.sub('\{ext\}', layer_extension, server_string)
 
+            # If the user hasn't provided a tile format (using original), and the is no layer_extension,
+            # fallback to the default png file format.
+            if options.tile_format == 'original':
+                if layer_extension:
+                    options.tile_format = layer_extension
+                else:
+                    options.tile_format = 'png'
+
             if r.search('\{alts:([^\}]*)\}', server_string):
                 for alternative in split_strip(r.groups[0]):
                     options.tile_servers.append(re.sub('\{alts:[^\}]*\}', alternative, server_string))
@@ -740,21 +761,37 @@ class stitch_osm_tiles(object):
     """
 
     #----------------------------------------------------------------------
-    def __init__(self, zoom, tile_servers = None, project_folder = 'maps_project', parallelDownloadThreads = 10, parallelStitchingThreads = get_physical_cores()):
+    def __init__(self,
+                 zoom,
+                 saved_tile_format,
+                 tile_servers = None,
+                 project_folder = 'maps_project',
+                 parallelDownloadThreads = 10,
+                 parallelStitchingThreads = get_physical_cores()):
         """
-        zoom: the zoom level where the class will be working with.
+        zoom: The zoom level where the class will be working with for downloading and stitching.
+        saved_tile_format: Different providers provide different tile formats. Mapquest for example, provides
+                           jpg, while openstreetmap provides png tiles. The saved_tile_format defines the format
+                           that the tiles will be saved locally. This might be needed for different reasons.
+                           For example, OziExplorer can read only PNG files from its local cache. In this case,
+                           if you download tiles from MapQuest, you cannot use them if you do not convert them
+                           to png format. If you set 'saved_tile_format' to png, then the tiles although they are
+                           downloaded in jpg, they will be converted and saved in a png format.
         tile_servers: A list with all of the available tile servers that can be used for tile downloading.
-           e.g:
-           [
-              'http://a.tileserver.com/{z}/{x}/{y}.png',
-              'http://b.tileserver.com/{z}/{x}/{y}.png',
-              'http://c.tileserver.com/{z}/{x}/{y}.png'
-           ]
+                      e.g:
+                         [
+                            'http://a.tileserver.com/{z}/{x}/{y}.png',
+                            'http://b.tileserver.com/{z}/{x}/{y}.png',
+                            'http://c.tileserver.com/{z}/{x}/{y}.png'
+                         ]
 
-           Note that {z}/{x}/{y} should be present, since these placeholders will be substituted
-           when downloading different tiles.
+                         Note that {z}/{x}/{y} should be present, since these placeholders will be substituted
+                         when downloading different tiles.
 
-           If tile_servers == None, no downloading of tiles can be performed, but tiles can still be stitched or calibrated.
+                         If tile_servers == None, no downloading of tiles can be performed, but tiles can
+                         still be stitched or calibrated.
+        project_folder: Project folder defines where the tiles will be downloaded and where the stitches will
+                        be saved.
         """
         # The zoom level where the current tile worker will be working on.
         self.zoom = zoom
@@ -765,6 +802,7 @@ class stitch_osm_tiles(object):
         self.max_dimensions = 10000 # 10000 pixels
         # The project name (equals to the project folder)
         self.project_folder = project_folder
+        self.saved_tile_format = saved_tile_format
         self.parallelDownloadThreads = parallelDownloadThreads
         self.parallelStitchingThreads = parallelStitchingThreads
         self._tile_height = None
@@ -978,25 +1016,6 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 else:
                     tile = resp.read()
                     try:
-                        ## For direct saving of the downloaded file.
-                        #f = open( download_path, 'w' )
-                        #f.write(tile)
-                        #f.close()
-
-                        ## Load the images with imagemagick
-                        #img = imImage(blob=tile)
-
-                        ## Find the extension of the file by reading its format
-                        #if img.format.lower() == 'jpeg':
-                            #ext = 'jpg'
-                        #elif img.format.lower() == 'png':
-                            #ext = 'png'
-                        #print img.width
-                        #print img.height
-                        #img.compression_quality = 95
-                        #img.totalColors = 10
-                        #img.save(filename=y_path)
-
                         img = gmImage(pgmagick.Blob(tile))
                         img.write(download_path)
                         retval = ([img, tile], url, download_path, None)
@@ -1144,9 +1163,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             for y in xrange(tile_north, tile_south + 1):
                 url = self.get_tile_url(self.tile_servers[counter % len(self.tile_servers)], str(x), str(y))
 
-                # Always save the original tiles in png format (for better compatibility. For example, OziExplorer's Internet Maps functionality cannot read jpg tiles)
-                # TODO: Add a command line option so that the user can choose either to save on the original format, always convert to jpg, or convert to png.
-                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), 'png')
+                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
 
                 LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
 
@@ -1204,11 +1221,15 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         # If we do not already know the dimensions of the tiles, then read the dimensions.
         if self._tile_height == None or self._tile_width == None:
             x_path = os.path.join(self.project_folder, str(self.zoom), str(tile_west))
-            # TODO: Add a command line option so that the user can choose either to save on the original format, always convert to jpg, or convert to png.
-            first_y_tile_path = '{}.{}'.format(os.path.join(x_path, str(tile_north)), 'png')
-            img = gmImage(first_y_tile_path)
-            self._tile_height = img.rows()
-            self._tile_width = img.columns()
+            first_y_tile_path = '{}.{}'.format(os.path.join(x_path, str(tile_north)), self.saved_tile_format)
+            try:
+                img = gmImage(first_y_tile_path)
+                self._tile_height = img.rows()
+                self._tile_width = img.columns()
+            except RuntimeError, e:
+                LOG.critical(e.message)
+                exit(1)
+
 
         total_vertical_resolution = self._tile_height * number_of_vertical_tiles
         total_horizontal_resolution = self._tile_width * number_of_horizontal_tiles
@@ -1416,7 +1437,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 for y_orig_tile in xrange(start_y_tile, end_y_tile):
                     for x_orig_tile in xrange(start_x_tile, end_x_tile):
                         x_path = os.path.join(self.project_folder, str(self.zoom), str(x_orig_tile))
-                        y_path = '{}.{}'.format(os.path.join(x_path, str(y_orig_tile)), 'png')
+                        y_path = '{}.{}'.format(os.path.join(x_path, str(y_orig_tile)), self.saved_tile_format)
 
                         files_stitch.append(y_path)
 
@@ -1584,7 +1605,13 @@ if __name__ == '__main__':
             if not os.path.isdir(zoom_folder):
                 os.mkdir(zoom_folder)
 
-            tileWorker = stitch_osm_tiles(zoom, options.tile_servers, options.project_folder, options.download_threads, options.stitching_threads)
+            tileWorker = stitch_osm_tiles(zoom = zoom,
+                                          saved_tile_format = options.tile_format,
+                                          tile_servers = options.tile_servers,
+                                          project_folder = options.project_folder,
+                                          parallelDownloadThreads = options.download_threads,
+                                          parallelStitchingThreads = options.stitching_threads
+                                          )
 
             tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
             tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
