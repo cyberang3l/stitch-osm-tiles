@@ -33,16 +33,16 @@ import multiprocessing
 import Queue
 import threading
 import time
+import ConfigParser
 import pgmagick
-import wand
 from pgmagick import Image as gmImage
-from wand.image import Image as imImage
 from collections import OrderedDict
 
 __all__ = [
     'quick_regexp', 'print_', 'is_number',
     'trim_list', 'split_strip',
-    'executeCommand', 'LOG'
+    'executeCommand', 'LOG', 'stitch_osm_tiles',
+    'get_physical_cores'
 ]
 
 # TODO: Add -l -r -t -b for left, right, top, bottom tiles to be downloaded (if the user doesn't want to provide the coordinates)
@@ -634,12 +634,9 @@ def validate_arguments(options):
     """
 
     # Check if the project dir exists. If no, try to create it.
-    if os.path.isdir(options.project_folder):
-        # TODO: Read zoom-specific configuration if it exists under the 'project_folder', and if it
-        #       doesn't match (for example if the current configuration uses a different tile provider
-        #       or layer than the already saved one), then prompt the user and exit.
-        pass
-    else:
+    options.project_folder = os.path.abspath(options.project_folder)
+
+    if not os.path.isdir(options.project_folder):
         os.mkdir(options.project_folder)
 
     # Validate and expand the given zoom level(s)
@@ -753,6 +750,82 @@ def validate_arguments(options):
                     options.tile_servers.append(re.sub('\{alts:[^\}]*\}', alternative, server_string))
             else:
                 options.tile_servers.append(server_string)
+
+#----------------------------------------------------------------------
+def read_zoom_config(zoom, options):
+    """
+    This function has to be called after the command line arguments have been validated,
+    and for a specific zoom level.
+
+    It will read the corresponding zoom level configuration file (if any) and make sure
+    that the user is not mixing different tiles or different layer etc.
+
+    Returns the zoom configuration file path and the main configuration section for the
+    current zoom level/file
+    """
+    zoom_conf = os.path.join(options['project_folder'].keys().pop(), 'zoom-{}.conf'.format(zoom))
+    main_config_section = "Zoom-{}-Settings".format(zoom)
+
+    try:
+        with open(zoom_conf):
+            LOG.debug("\nReading configuration from file '{}".format(zoom_conf))
+            config = ConfigParser.ConfigParser()
+            config.read(zoom_conf)
+
+            if(config.has_section(main_config_section)):
+                for key, val in options.items():
+                    # val.values().pop() returns either 0 or 1, indicating if we
+                    # care to check this option.
+                    if val.values().pop():
+                        if config.has_option(main_config_section, key):
+                            config_val = config.get(main_config_section, key)
+                            LOG.debug("Reading config option '{}' -> '{}'".format(key, config_val))
+                            if config_val != val.keys().pop():
+                                error_and_exit("Option '{0}' in the existing config file is '{1}', but it is '{2}' in\n"
+                                               "the current run. Please use the same value for key '{0}', or use a different project folder.".format(
+                                                   key,
+                                                   config_val,
+                                                   val.keys().pop()
+                                               )
+                                               )
+                        else:
+                            error_and_exit("Option '{0}' is defined in the current run, but it doesn't exist in the\n"
+                                           "configuration file '{1}'."
+                                           "This option should match since a configuration file exists (indicating that you have"
+                                           "already ran the script for the specified zoom level in the current project folder)")
+
+    except IOError as e:
+        # If the error number is 2 (no such file or directory), the conf file does no
+        # exist. Most likely it is the first first time we run the script for this specific
+        # zoom level under the specified project_folder. In this case return silently.
+        # If the errno is NOT 2, raise an error and exit.
+        if not e.errno == 2:
+            LOG.error("IOError: [Errno {}] {}: '{}'".format(e.errno, e.strerror, e.filename))
+            raise
+    except ConfigParser.MissingSectionHeaderError as e:
+        LOG.error('\nNot a valid configuration file {}'.format(e.filename))
+        raise
+
+    return zoom_conf, main_config_section
+
+#----------------------------------------------------------------------
+def write_zoom_config(zoom_conf, options, section_to_write):
+    """
+    Write the options in the configuration file.
+    Make sure that the options you pass in this function are "final".
+    No sanity checks will be made. Just write in the file.
+    """
+    with open(zoom_conf, 'w') as cfgfile:
+        LOG.debug("\nWriting configuration file '{}'".format(zoom_conf))
+        config = ConfigParser.ConfigParser()
+        config.add_section(section_to_write)
+
+        for key, val in options.items():
+            LOG.debug("Writing '{}' -> '{}'".format(key, val.keys().pop()))
+            config.set(section_to_write, key, val.keys().pop())
+
+        config.write(cfgfile)
+
 
 ########################################################################
 class stitch_osm_tiles(object):
@@ -1613,8 +1686,73 @@ if __name__ == '__main__':
             number_of_vertical_tiles = (tile_south - tile_north) + 1
             total_tiles = number_of_horizontal_tiles * number_of_vertical_tiles
 
+            # Prepare the configuration dictionary
+            # The configuration dictionary a two levels nested dictionary. The top level key
+            # is the config option, each top level key has dictionary value. The key of the dictionary value
+            # is the actualy configuration value, and the value of the value is a number 0 or 1.
+            # 0 indicates that this config option is informative, and 1 indicated that this option must
+            # match on subsequent runs.
+            # E.g., for the config_dict['tile_format'] = {options.tile_format: 1}
+            #       'tile_format' is the option saved in the config file, and the value of the option
+            #       is options.tile_format. The value of the nested dict which is '1', indicates that
+            #       if we re-run the script, the 'tile_format' provided by the command line options should
+            #       be the same as the one used the first time we ran the script and this conf file was
+            #       generated.
+            config_dict = OrderedDict()
+            config_dict['project_folder'] = {str(options.project_folder): 0}
+            config_dict['provider'] = {options.tile_server_provider: 1}
+            config_dict['overlay'] = {options.tile_server_provider_layer: 1} if options.tile_server_provider_layer else {"": 0}
+            config_dict['tile_format'] = {options.tile_format: 1}
+            config_dict['zoom'] = {str(zoom): 1}
+            config_dict['longtitude1-west'] = {str(options.long1): 1}
+            config_dict['longtitude2-east'] = {str(options.long2): 1}
+            config_dict['latitude1-north'] = {str(options.lat1): 1}
+            config_dict['latitude2-south'] = {str(options.lat2): 1}
+            config_dict['tile_west'] = {str(tile_west): 1}
+            config_dict['tile_east'] = {str(tile_east): 1}
+            config_dict['tile_north'] = {str(tile_north): 1}
+            config_dict['tile_south'] = {str(tile_south): 1}
+            config_dict['total_tiles'] = {str(total_tiles): 1}
+            config_dict['degrees_by_western_most_tile'] = {str(tileWorker.tilenums2deg(tile_west, tile_north)[1]): 1}
+            config_dict['degrees_by_northern_most_tile'] = {str(tileWorker.tilenums2deg(tile_west, tile_north)[0]): 1}
+            config_dict['degrees_by_eastern_most_tile'] = {str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1]): 1}
+            config_dict['degrees_by_southern_most_tile'] = {str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]): 1}
+
+            # Check if there is an existing config file, and if the necessary config
+            # values do match, warn the user and exit.
+            zoom_conf, main_config_section = read_zoom_config(zoom, config_dict)
+
+            # Write the configuration in a conf file
+            write_zoom_config(zoom_conf, config_dict, main_config_section)
+
+            if not options.skip_downloading and not options.only_calibrate:
+                tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
+            else:
+                LOG.info("Skipping tile downloading as requested.")
+
+            # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
+            # of the original tiles in order to calculate this.
+            dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+
+            config_dict['total_stitched_tiles'] = {'{} ({}x{})'.format(dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
+                                                                      dimensions['horizontal_divide_by'],
+                                                                      dimensions['vertical_divide_by']): 0}
+            config_dict['resolution_per_stitch'] = {'{}x{} px ({} MPixels)'.format(dimensions['horizontal_resolution_per_stitch'],
+                                                                                  dimensions['vertical_resolution_per_stitch'],
+                                                                                  round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)): 0}
+            write_zoom_config(zoom_conf, config_dict, main_config_section)
+
+            if not options.skip_stitching and not options.only_calibrate:
+                tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
+            else:
+                LOG.info("Skipping tile stitching as requested.")
+
+            if not options.skip_stitching or options.only_calibrate:
+                tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
+
             properties = """Provider: {}
 Overlay: {}
+Tile Format: {}
 Zoom: {}
 longtitude1 (W): {}
 longtitude2 (E): {}
@@ -1628,58 +1766,29 @@ total_tiles: {}
 W_degrees_by_western_most_tile: {}
 N_degrees_by_northern_most_tile: {}
 E_degrees_by_eastern_most_tile: {}
-S_degrees_by_southern_most_tile: {}""".format(
-                                          options.tile_server_provider,
-                                          options.tile_server_provider_layer if options.tile_server_provider_layer else "",
-                                          zoom,
-                                          options.long1,
-                                          options.long2,
-                                          options.lat1,
-                                          options.lat2,
-                                          tile_west,
-                                          tile_east,
-                                          tile_north,
-                                          tile_south,
-                                          (number_of_horizontal_tiles * number_of_vertical_tiles),
-                                          tileWorker.tilenums2deg(tile_west, tile_north)[1],
-                                          tileWorker.tilenums2deg(tile_west, tile_north)[0],
-                                          tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1],
-                                          tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]
-                                      )
-
-            LOG.debug(properties + "\n")
-
-            with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w+') as f:
-                f.write(properties)
-
-            if not options.skip_downloading and not options.only_calibrate:
-                tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
-
-            # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
-            # of the original tiles in order to calculate this.
-            dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
-
-            properties = """{}
-total_stitched_tiles: {} ({}x{})
-resolution_per_stitch: {}x{} px ({} MPixels)
-""".format(
-       properties,
-       dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
-       dimensions['horizontal_divide_by'],
-       dimensions['vertical_divide_by'],
-       dimensions['horizontal_resolution_per_stitch'],
-       dimensions['vertical_resolution_per_stitch'],
-       round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)
-   )
-
-            with open(os.path.join(options.project_folder, 'zoom-{}.conf'.format(zoom)), 'w') as f:
-                f.write(properties)
-
-            if not options.skip_stitching and not options.only_calibrate:
-                tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
-
-            tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
-
+S_degrees_by_southern_most_tile: {}
+total_stitched_tiles: {}
+resolution_per_stitch: {}""".format(
+                                config_dict['provider'].keys().pop(),
+                                config_dict['overlay'].keys().pop(),
+                                config_dict['tile_format'].keys().pop(),
+                                config_dict['zoom'].keys().pop(),
+                                config_dict['longtitude1-west'].keys().pop(),
+                                config_dict['longtitude2-east'].keys().pop(),
+                                config_dict['latitude1-north'].keys().pop(),
+                                config_dict['latitude2-south'].keys().pop(),
+                                config_dict['tile_west'].keys().pop(),
+                                config_dict['tile_east'].keys().pop(),
+                                config_dict['tile_north'].keys().pop(),
+                                config_dict['tile_south'].keys().pop(),
+                                config_dict['total_tiles'].keys().pop(),
+                                config_dict['degrees_by_western_most_tile'].keys().pop(),
+                                config_dict['degrees_by_northern_most_tile'].keys().pop(),
+                                config_dict['degrees_by_eastern_most_tile'].keys().pop(),
+                                config_dict['degrees_by_southern_most_tile'].keys().pop(),
+                                config_dict['total_stitched_tiles'].keys().pop(),
+                                config_dict['resolution_per_stitch'].keys().pop()
+                            )
             LOG.info("\n" + properties)
 
             # To compose two images (satellite with hybrid on top), use the convert command like this:
