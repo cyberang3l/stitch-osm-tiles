@@ -1374,7 +1374,14 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 LOG.debug("{} is STITCHING '{}'".format(threading.currentThread().getName(), stitch_filepath))
 
                 # Prepare the montage command to execute on command line.
-                montage_cmd = ['gm', 'montage']
+                # Graphicsmagick has a bug (at least in the version that I am using) and when doing the montage
+                # from jpg files, the resulting montaged images is half of the expected size. So when stitching
+                # from jpg source files, use the imagemagick montage, while for all the rest, use gm montage which
+                # is faster.
+                if self.saved_tile_format == 'jpg':
+                    montage_cmd = ['montage']
+                else:
+                    montage_cmd = ['gm', 'montage']
                 montage_cmd.extend(list_of_files)
                 # Run the montage, but do not save into a file! Instead, redirect a png output to stdout. Since the stdout is binary
                 # data and stored in memory, we use pgmagick.Blob to load it in a pgmagick object and crop it later without having to
