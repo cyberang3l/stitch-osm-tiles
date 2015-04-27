@@ -1375,7 +1375,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
                 # Prepare the montage command to execute on command line.
                 # Graphicsmagick has a bug (at least in the version that I am using) and when doing the montage
-                # from jpg files, the resulting montaged images is half of the expected size. So when stitching
+                # from jpg files, the resulting montaged images are half of the expected size. So when stitching
                 # from jpg source files, use the imagemagick montage, while for all the rest, use gm montage which
                 # is faster.
                 if self.saved_tile_format == 'jpg':
@@ -1655,6 +1655,187 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         pbar.finish()
 
 #----------------------------------------------------------------------
+def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor = 'lowerleft'):
+    """
+    x: An integer for x placement
+    y: An integer for y placement
+    size: Size of x of the drawable. Size of y is a little bit more than x.
+    color: A pgmagick.Color of the drawable.
+    anchor: defines which corner of the N will be placed at x, y
+            Accepted values:
+               lowerleft,
+               lowerright
+               upperleft
+               upperright
+               middle
+
+    Returns a pgmagick drawable
+
+    # Since I cannot change the opacity of the text (when I do, I see a semitransparent box
+    # behind the text, but the opacity of the text itself is not chaning), draw an 'N' with
+    # a drawable polyline.
+    #
+    # To draw an N, we need a polyline with 10 points at the coordinates illustrated below:
+    #               2__3 5_6
+    #               |  \ | |
+    #               |   \| |
+    #               | 9  4 |
+    #               | |\   |
+    #               |_| \__|
+    #              1 10 8  7
+    #
+    """
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle')
+    if anchor not in anchor_vals:
+        print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
+        raise KeyError
+
+    north = pgmagick.DrawableList()
+    coords = pgmagick.CoordinateList()
+
+    # Use the multipliers for each point, in order to be able to resize the 'N'
+    # If you don't like the look of the generated n, change the values of x_p and
+    # y_p array. Do not change x_p[1] and x_p[4]. The values
+    # should be proportinal to x_p[1] and x_p[4], and x_p[1] should be 1 and
+    # x_p[4] should be 2.
+    # x_p[1] and y_p[1] is the lower left point of the drawn 'N'
+    x_p = {
+        1: 1,
+        2: 1.3,
+        3: 1.7,
+        4: 2
+    }
+    y_p = {
+        4: 0.06,
+        3: 0.70125,
+        2: 0.53625,
+        1: 1.2
+    }
+
+    # Do not change anything after this point
+
+    n_width = size * abs(x_p[4] - x_p[1])
+    n_height = size * abs(y_p[1] - y_p[4])
+
+    if anchor == 'lowerleft':
+        anchor_x = 0
+        anchor_y = 0
+    elif anchor == 'lowerright':
+        anchor_x = n_width
+        anchor_y = 0
+    elif anchor == 'upperleft':
+        anchor_x = 0
+        anchor_y = -n_height
+    elif anchor == 'upperright':
+        anchor_x = n_width
+        anchor_y = -n_height
+    elif anchor == 'middle':
+        anchor_x = n_width / 2
+        anchor_y = -n_height / 2
+
+
+    x_multipliers = [x_p[1], x_p[1], x_p[2], x_p[3], x_p[3], x_p[4], x_p[4], x_p[3], x_p[2], x_p[2]]
+    y_multipliers = [y_p[1], y_p[4], y_p[4], y_p[3], y_p[4], y_p[4], y_p[1], y_p[1], y_p[2], y_p[1]]
+    subtract_x = 0
+    subtract_y = 0
+    for i in xrange(10):
+        x_point = size * x_multipliers[i]
+        y_point = size * y_multipliers[i]
+        if i == 0:
+            subtract_x = x_point - x
+            subtract_y = y_point - y
+        x_point = x_point - subtract_x - anchor_x
+        y_point = y_point - subtract_y - anchor_y
+        coords.append(pgmagick.Coordinate(x_point, y_point))
+
+    north.append(pgmagick.DrawablePolygon(coords))
+
+    return north
+
+def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
+    """
+    Draw the Grid for the given map width and height.
+    """
+    grid = pgmagick.DrawableList()
+
+    # range will return a list with the points every x_grid_by pixels, but if the
+    # image is divided exactly by x_grid_by pixels, there will be an opened side.
+    # The additional append line, will add the closing line at the edge of the map.
+    x_pos = range(canvas_margin, map_width + canvas_margin, x_grid_by)
+    x_pos.append(map_width + canvas_margin)
+    for central_x in x_pos:
+        for t in xrange(thickness):
+            x = central_x - int(thickness / 2) + t
+            y1 = 0
+            y2 = map_height + 2 * canvas_margin
+            grid.append(pgmagick.DrawableLine(x, y1, x, y2))
+
+    y_pos = range(canvas_margin, map_height + canvas_margin, y_grid_by)
+    y_pos.append(map_height + canvas_margin)
+    for central_y in y_pos:
+        for t in xrange(thickness):
+            y = central_y - int(thickness / 2) + t
+            x1 = 0
+            x2 = map_width + 2 * canvas_margin
+            grid.append(pgmagick.DrawableLine(x1, y, x2, y))
+
+    return grid
+
+def DrawableMapLabels(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
+    """
+    Draw the labels on the sides of the canvas
+    """
+    labels = pgmagick.DrawableList()
+
+    fontSize = 80
+    fontname = 'FreeSans'
+    labels.append(pgmagick.DrawableFont(fontname, pgmagick.StyleType.NormalStyle, 600, pgmagick.StretchType.NormalStretch))
+    labels.append(pgmagick.DrawablePointSize(fontSize))
+    labels.append(pgmagick.DrawableGravity(pgmagick.GravityType.NorthWestGravity))
+
+    # Use an image object, in order to make use of the fontmetrics capability.
+    text = pgmagick.Image()
+    text.fontPointsize(fontSize)
+    text.font(fontname)
+    fontmetric = pgmagick.TypeMetric()
+
+    x_pos = range(canvas_margin, map_width + canvas_margin, x_grid_by)
+    #x_pos.pop()
+    ascii_chr = [65] # ASCII 65 = A
+    for x in x_pos:
+        lab = ''.join(chr(i) for i in ascii_chr)
+        pgmagick.Image.fontTypeMetrics(text, lab, fontmetric)
+        labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2), canvas_margin - 30 , lab))
+        labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2),
+                                            map_height + canvas_margin + 30 + (fontmetric.ascent() + fontmetric.descent()), lab))
+        # If we reached Z, start counting from AA, AB, AC etc...
+        # This if so far it will only work until ZZ which I think is more than enough.
+        if ascii_chr[len(ascii_chr) - 1] < 90: # ASCII 90 = Z
+            ascii_chr[len(ascii_chr) - 1] += 1
+        else:
+            if len(ascii_chr) == 1:
+                ascii_chr[0] = 65
+                ascii_chr.append(65)
+            else:
+                ascii_chr[0] += 1
+                ascii_chr[1] = 65
+
+
+    y_pos = range(canvas_margin, map_height + canvas_margin, y_grid_by)
+    lab = 1
+    for y in y_pos:
+        pgmagick.Image.fontTypeMetrics(text, str(lab), fontmetric)
+        # http://www.graphicsmagick.org/Magick++/TypeMetric.html
+        labels.append(pgmagick.DrawableText(canvas_margin - fontmetric.textWidth() - 30,
+                                            y + int(y_grid_by / 2) + int((fontmetric.ascent() + fontmetric.descent()) / 2), str(lab)))
+        labels.append(pgmagick.DrawableText(map_width + canvas_margin + 30,
+                                            y + int(y_grid_by / 2) + int((fontmetric.ascent() + fontmetric.descent()) / 2), str(lab)))
+        lab += 1
+
+    return labels
+
+
+#----------------------------------------------------------------------
 if __name__ == '__main__':
     """
     Write the main program here
@@ -1670,6 +1851,39 @@ if __name__ == '__main__':
     LOG.info("----------------------------------\n")
 
     #print options
+
+    ### Small image for quick experimentation
+    ##im = pgmagick.Image(pgmagick.Geometry(1000, 1000), pgmagick.Color('white'))
+    ##north = DrawableNorth(10, 200)
+    ##north.append(pgmagick.DrawableFillOpacity(0.3))
+    ##im.draw(north)
+    ##im.display()
+    ##exit()
+
+    #img = pgmagick.Image('/home/cyber/OSM/custom/stitched_maps/11/0_0.png')
+    #bgcolor = pgmagick.Color("#ffffff00")
+    #gravity = pgmagick.GravityType.CenterGravity
+    #canvas_margin_px = 144
+    #canvas_width = img.columns() + canvas_margin_px * 2
+    #canvas_height = img.rows() + canvas_margin_px * 2
+    #canvas_geometry = pgmagick.Geometry(canvas_width, canvas_height)
+    #canvas = pgmagick.Image(canvas_geometry, bgcolor)
+    #canvas.composite(img, gravity)
+
+    #north = DrawableMapNorth(canvas.columns() - canvas_margin_px, canvas_margin_px, 120, anchor='upperright')
+    #north.append(pgmagick.DrawableFillOpacity(0.3))
+    #canvas.draw(north)
+
+    #grid = DrawableMapGrid(img.columns(), img.rows(), canvas_margin_px)
+    #grid.append(pgmagick.DrawableFillOpacity(0.3))
+    #canvas.draw(grid)
+
+    #labels = DrawableMapLabels(img.columns(), img.rows(), canvas_margin_px)
+    #canvas.draw(labels)
+
+    #canvas.display()
+    #canvas.write('/home/cyber/OSM/custom/stitched_maps/11/0_0_print.png')
+    #exit()
 
     try:
 
