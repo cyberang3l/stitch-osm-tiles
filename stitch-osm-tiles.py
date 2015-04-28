@@ -862,6 +862,7 @@ class stitch_osm_tiles(object):
                  saved_tile_format,
                  tile_servers = None,
                  project_folder = 'maps_project',
+                 max_dimensions = 10000,
                  parallelDownloadThreads = 10,
                  parallelStitchingThreads = get_physical_cores()):
         """
@@ -895,7 +896,7 @@ class stitch_osm_tiles(object):
         # create_provider_dict function.
         self.tile_servers = tile_servers
         # the _tile_height and _tile_height will be calculated when the first tile is downloaded.
-        self.max_dimensions = 10000 # 10000 pixels
+        self.max_dimensions = max_dimensions # Default 10000 pixels
         # The project name (equals to the project folder)
         self.project_folder = project_folder
         self.saved_tile_format = saved_tile_format
@@ -1691,6 +1692,10 @@ def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor =
                upperleft
                upperright
                middle
+               bottom
+               top
+               left
+               right
 
     Returns a pgmagick drawable
 
@@ -1708,7 +1713,7 @@ def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor =
     #              1 10 8  7
     #
     """
-    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle')
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
         print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
         raise KeyError
@@ -1755,6 +1760,18 @@ def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor =
     elif anchor == 'middle':
         anchor_x = n_width / 2
         anchor_y = -n_height / 2
+    elif anchor == 'bottom':
+        anchor_x = n_width / 2
+        anchor_y = 0
+    elif anchor == 'top':
+        anchor_x = n_width / 2
+        anchor_y = -n_height
+    elif anchor == 'left':
+        anchor_x = 0
+        anchor_y = -n_height / 2
+    elif anchor == 'right':
+        anchor_x = n_width
+        anchor_y = -n_height / 2
 
 
     x_multipliers = [x_p[1], x_p[1], x_p[2], x_p[3], x_p[3], x_p[4], x_p[4], x_p[3], x_p[2], x_p[2]]
@@ -1776,6 +1793,131 @@ def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor =
     return north
 
 #----------------------------------------------------------------------
+def DrawableMapCompass(x, y, radius = 100, anchor = 'lowerleft'):
+    """
+    Draw a compass on the map of 'radius' size (the actual size is radius * 2)
+    """
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
+    if anchor not in anchor_vals:
+        print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
+        raise KeyError
+
+    compass = pgmagick.DrawableList()
+    black = pgmagick.Color('black')
+    white = pgmagick.Color('white')
+
+    # Do not change the central_point! This will always have to be 1, 1
+    central_point = {
+        'x': 1,
+        'y': 1
+    }
+    # All of the offsets will be added-subtracted from the central_point
+    # Do not change offsets[1]
+    offsets = {
+        1: (0.15, -0.15),
+        2: (0, -1)
+    }
+
+    n_radius = radius * abs(central_point['x'] - central_point['x'] + offsets[2][1])
+
+    if anchor == 'lowerleft':
+        anchor_x = 0
+        anchor_y = -n_radius * 2
+    elif anchor == 'lowerright':
+        anchor_x = -n_radius * 2
+        anchor_y = -n_radius * 2
+    elif anchor == 'upperleft':
+        anchor_x = 0
+        anchor_y = 0
+    elif anchor == 'upperright':
+        anchor_x = -n_radius * 2
+        anchor_y = 0
+    elif anchor == 'middle':
+        anchor_x = -n_radius
+        anchor_y = -n_radius
+    elif anchor == 'bottom':
+        anchor_x = -n_radius
+        anchor_y = -n_radius * 2
+    elif anchor == 'top':
+        anchor_x = -n_radius
+        anchor_y = 0
+    elif anchor == 'left':
+        anchor_x = 0
+        anchor_y = -n_height
+    elif anchor == 'right':
+        anchor_x = -n_width * 2
+        anchor_y = -n_height
+
+    x_p_center = central_point['x'] * radius + x + anchor_x
+    y_p_center = central_point['y'] * radius + y + anchor_y
+
+    # Make the white parts of the compass first (white fill, black stroke)
+    compass.append(pgmagick.DrawableStrokeColor(black))
+    compass.append(pgmagick.DrawableFillColor(white))
+
+    # Draw a circle with a thickness relative to the size for every 50 pixels size, add 1 pixel in the thickness
+    r = int(radius * 0.55)
+    circle_thickness = int(radius / 15)
+    compass.append(pgmagick.DrawableStrokeWidth(circle_thickness))
+    compass.append(pgmagick.DrawableCircle(x_p_center, y_p_center, x_p_center + r, y_p_center + r))
+
+    # Change back to a thin stroke for the rest
+    compass.append(pgmagick.DrawableStrokeWidth(1))
+
+    coords = pgmagick.CoordinateList()
+    coords.append(pgmagick.Coordinate(x_p_center, y_p_center))
+    # For i = 0 we build the north half arrow
+    # ....i = 1, east
+    # ....i = 2, south
+    # ....i = 3, west
+    # Except the central points, each half compass arrow, has two more points
+    # We use j to build these two points.
+    for i in (0, 1, 2, 3):
+        for j in (1, 2):
+            if i == 0:
+                x_p = radius * (central_point['x'] - offsets[j][0]) + x + anchor_x
+                y_p = radius * (central_point['y'] + offsets[j][1]) + y + anchor_y
+            elif i == 1:
+                x_p = radius * (central_point['x'] - offsets[j][1]) + x + anchor_x
+                y_p = radius * (central_point['y'] - offsets[j][0]) + y + anchor_y
+            elif i == 2:
+                x_p = radius * (central_point['x'] + offsets[j][0]) + x + anchor_x
+                y_p = radius * (central_point['y'] - offsets[j][1]) + y + anchor_y
+            elif i == 3:
+                x_p = radius * (central_point['x'] + offsets[j][1]) + x + anchor_x
+                y_p = radius * (central_point['y'] + offsets[j][0]) + y + anchor_y
+
+            coords.append(pgmagick.Coordinate(x_p, y_p))
+        coords.append(pgmagick.Coordinate(x_p_center, y_p_center))
+    compass.append(pgmagick.DrawablePolygon(coords))
+
+    # Make the black parts of the compass (black fill, black stroke)
+    compass.append(pgmagick.DrawableFillColor(black))
+
+    coords = pgmagick.CoordinateList()
+    coords.append(pgmagick.Coordinate(x_p_center, y_p_center))
+    for i in (0, 1, 2, 3):
+        for j in (1, 2):
+            if i == 0:
+                x_p = radius * (central_point['x'] + offsets[j][0]) + x + anchor_x
+                y_p = radius * (central_point['y'] + offsets[j][1]) + y + anchor_y
+            elif i == 1:
+                x_p = radius * (central_point['x'] - offsets[j][1]) + x + anchor_x
+                y_p = radius * (central_point['y'] + offsets[j][0]) + y + anchor_y
+            elif i == 2:
+                x_p = radius * (central_point['x'] - offsets[j][0]) + x + anchor_x
+                y_p = radius * (central_point['y'] - offsets[j][1]) + y + anchor_y
+            elif i == 3:
+                x_p = radius * (central_point['x'] + offsets[j][1]) + x + anchor_x
+                y_p = radius * (central_point['y'] - offsets[j][0]) + y + anchor_y
+
+            coords.append(pgmagick.Coordinate(x_p, y_p))
+        coords.append(pgmagick.Coordinate(x_p_center, y_p_center))
+    compass.append(pgmagick.DrawablePolygon(coords))
+
+    return compass
+
+#----------------------------------------------------------------------
 def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
     """
     Draw the Grid for the given map width and height.
@@ -1787,7 +1929,7 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_
     For example, if the x_grid_by = 256 and the map_width = 512 the 3 grid lines
     will be generated: at x = 1, x=257 and x=512. In these values, the canvas_margin
     size is added. If the x_grid_by = 256 and the map_width = 544, then the x_lines will
-    be placed at 1, 273, 544
+    be placed at 1, 273, 544.
 
     The calculated x/y values where the grid lines will be placed are the central values.
     If the grid thickness is more than 1 pixels (2 by default), the grid will be
@@ -1897,9 +2039,10 @@ if __name__ == '__main__':
 
     ### Small image for quick experimentation
     ##im = pgmagick.Image(pgmagick.Geometry(1000, 1000), pgmagick.Color('white'))
-    ##north = DrawableNorth(10, 200)
-    ##north.append(pgmagick.DrawableFillOpacity(0.3))
+    ##north = DrawableMapNorth(200, 95, 30, anchor='bottom')
     ##im.draw(north)
+    ##compass = DrawableMapCompass(200, 200, 100, anchor='middle')
+    ##im.draw(compass)
     ##im.display()
     ##exit()
 
@@ -1920,8 +2063,14 @@ if __name__ == '__main__':
     #labels = DrawableMapLabels(img.columns(), img.rows(), canvas_margin_px)
     #canvas.draw(labels)
 
-    #north = DrawableMapNorth(canvas.columns() - canvas_margin_px, canvas_margin_px, 120, anchor='upperright')
-    #north.append(pgmagick.DrawableFillOpacity(0.3))
+    #compass_size = 110
+    #compass_coords = (canvas.columns() - canvas_margin_px - 20, canvas_margin_px + 80)
+    #compass = DrawableMapCompass(compass_coords[0], compass_coords[1], compass_size, anchor='upperright')
+    #canvas.draw(compass)
+
+    #north_size = int(compass_size / 2.5)
+    #north_coords = (compass_coords[0] - compass_size, compass_coords[1] - 10)
+    #north = DrawableMapNorth(north_coords[0], north_coords[1], north_size, anchor='bottom')
     #canvas.draw(north)
 
     #canvas.display()
@@ -1939,6 +2088,7 @@ if __name__ == '__main__':
                                           saved_tile_format = options.tile_format,
                                           tile_servers = options.tile_servers,
                                           project_folder = options.project_folder,
+                                          max_dimensions = options.max_resolution_px,
                                           parallelDownloadThreads = options.download_threads,
                                           parallelStitchingThreads = options.stitching_threads
                                           )
