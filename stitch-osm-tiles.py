@@ -40,7 +40,7 @@ from collections import OrderedDict
 
 __all__ = [
     'quick_regexp', 'print_', 'is_number',
-    'trim_list', 'split_strip',
+    'trim_list', 'split_strip', 'xfrange',
     'executeCommand', 'LOG', 'stitch_osm_tiles',
     'get_physical_cores'
 ]
@@ -178,6 +178,29 @@ def split_strip(string, separator=","):
         return trim_list(string.split(separator))
     else:
         return -1
+
+#----------------------------------------------------------------------
+def xfrange(start = None, stop = None, step = None):
+    """ xfrange([start,] stop[, step]) -> generator of floats """
+    if step == None:
+        step = 1.0
+
+    if stop == None and start != None:
+        stop = start
+        start = 0.0
+
+    if stop == None and start == None:
+        print("At least 'stop' should be passed to this function")
+        raise KeyError
+
+    if is_number(start) and is_number(stop) and is_number(step):
+        while start < stop:
+            # yield returns a generator object
+            yield start
+            start += float(step)
+    else:
+        print("Non numeric value. Only numeric values are accepted.")
+        raise KeyError
 
 #----------------------------------------------------------------------
 def is_number(s, is_int=False):
@@ -1752,38 +1775,57 @@ def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor =
 
     return north
 
+#----------------------------------------------------------------------
 def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
     """
     Draw the Grid for the given map width and height.
+
+    The grid will be placed every approximately x_grid_by and y_grid_by pixels.
+    This is approximate, because the grid will be stretched in order to generate
+    equally distributed grid lines, and at least two grid lines should be located at
+    the edges.
+    For example, if the x_grid_by = 256 and the map_width = 512 the 3 grid lines
+    will be generated: at x = 1, x=257 and x=512. In these values, the canvas_margin
+    size is added. If the x_grid_by = 256 and the map_width = 544, then the x_lines will
+    be placed at 1, 273, 544
+
+    The calculated x/y values where the grid lines will be placed are the central values.
+    If the grid thickness is more than 1 pixels (2 by default), the grid will be
+    distributed around this central value.
     """
     grid = pgmagick.DrawableList()
 
-    # range will return a list with the points every x_grid_by pixels, but if the
-    # image is divided exactly by x_grid_by pixels, there will be an opened side.
-    # The additional append line, will add the closing line at the edge of the map.
-    x_pos = range(canvas_margin, map_width + canvas_margin, x_grid_by)
-    x_pos.append(map_width + canvas_margin)
-    for central_x in x_pos:
+    x_grid_by = x_grid_by + (map_width % x_grid_by / float(int(map_width / x_grid_by)))
+    y_grid_by = y_grid_by + (map_height % y_grid_by / float(int(map_height / y_grid_by)))
+
+    for central_x_pos in xfrange(canvas_margin, map_width + canvas_margin + 1, x_grid_by):
+        # central_x is a float, but we want an integer in order to draw in a pixel,
+        # so round the value of central_x to the nearest integer
+        central_x_pos = round(central_x_pos)
         for t in xrange(thickness):
-            x = central_x - int(thickness / 2) + t
+            x = central_x_pos - int(thickness / 2) + t
             y1 = 0
             y2 = map_height + 2 * canvas_margin
             grid.append(pgmagick.DrawableLine(x, y1, x, y2))
 
-    y_pos = range(canvas_margin, map_height + canvas_margin, y_grid_by)
-    y_pos.append(map_height + canvas_margin)
-    for central_y in y_pos:
+    for central_y_pos in xfrange(canvas_margin, map_height + canvas_margin + 1, y_grid_by):
+        central_y_pos = round(central_y_pos)
         for t in xrange(thickness):
-            y = central_y - int(thickness / 2) + t
+            y = central_y_pos - int(thickness / 2) + t
             x1 = 0
             x2 = map_width + 2 * canvas_margin
             grid.append(pgmagick.DrawableLine(x1, y, x2, y))
 
     return grid
 
-def DrawableMapLabels(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
+#----------------------------------------------------------------------
+def DrawableMapLabels(map_width, map_height, canvas_margin, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
     """
     Draw the labels on the sides of the canvas
+
+    This function could be merged with the DrawableMapGrid function
+    but we keep it separate for fine tuning. The grid for example may need to be
+    semitransparent, but the labels should not
     """
     labels = pgmagick.DrawableList()
 
@@ -1799,10 +1841,12 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, thickness = 2, x_gri
     text.font(fontname)
     fontmetric = pgmagick.TypeMetric()
 
-    x_pos = range(canvas_margin, map_width + canvas_margin, x_grid_by)
-    #x_pos.pop()
+    x_grid_by = x_grid_by + (map_width % x_grid_by / float(int(map_width / x_grid_by)))
+    y_grid_by = y_grid_by + (map_height % y_grid_by / float(int(map_height / y_grid_by)))
+
     ascii_chr = [65] # ASCII 65 = A
-    for x in x_pos:
+    for x in xfrange(canvas_margin, map_width + canvas_margin, x_grid_by):
+        x = round(x)
         lab = ''.join(chr(i) for i in ascii_chr)
         pgmagick.Image.fontTypeMetrics(text, lab, fontmetric)
         labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2), canvas_margin - 30 , lab))
@@ -1820,10 +1864,9 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, thickness = 2, x_gri
                 ascii_chr[0] += 1
                 ascii_chr[1] = 65
 
-
-    y_pos = range(canvas_margin, map_height + canvas_margin, y_grid_by)
     lab = 1
-    for y in y_pos:
+    for y in xfrange(canvas_margin, map_height + canvas_margin, y_grid_by):
+        y = round(y)
         pgmagick.Image.fontTypeMetrics(text, str(lab), fontmetric)
         # http://www.graphicsmagick.org/Magick++/TypeMetric.html
         labels.append(pgmagick.DrawableText(canvas_margin - fontmetric.textWidth() - 30,
@@ -1870,16 +1913,16 @@ if __name__ == '__main__':
     #canvas = pgmagick.Image(canvas_geometry, bgcolor)
     #canvas.composite(img, gravity)
 
-    #north = DrawableMapNorth(canvas.columns() - canvas_margin_px, canvas_margin_px, 120, anchor='upperright')
-    #north.append(pgmagick.DrawableFillOpacity(0.3))
-    #canvas.draw(north)
-
     #grid = DrawableMapGrid(img.columns(), img.rows(), canvas_margin_px)
     #grid.append(pgmagick.DrawableFillOpacity(0.3))
     #canvas.draw(grid)
 
     #labels = DrawableMapLabels(img.columns(), img.rows(), canvas_margin_px)
     #canvas.draw(labels)
+
+    #north = DrawableMapNorth(canvas.columns() - canvas_margin_px, canvas_margin_px, 120, anchor='upperright')
+    #north.append(pgmagick.DrawableFillOpacity(0.3))
+    #canvas.draw(north)
 
     #canvas.display()
     #canvas.write('/home/cyber/OSM/custom/stitched_maps/11/0_0_print.png')
