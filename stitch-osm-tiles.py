@@ -571,6 +571,10 @@ def _command_Line_Options():
                         action="store_true",
                         dest="only_calibrate",
                         help="When this option is enabled, the script will not download or stitch any tiles. Only OziExplorer calibration files will be generated.")
+    parser.add_argument("--prepare-printout-maps",
+                        action="store_true",
+                        dest="printout",
+                        help="Generates paper friendly maps with a grid and a scale indicator.")
     parser.add_argument("--download-threads",
                         action="store",
                         type=int,
@@ -1682,7 +1686,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         pbar.finish()
 
 #----------------------------------------------------------------------
-def DrawableMapNorth(x, y, size = 100, color = pgmagick.Color('black'), anchor = 'lowerleft'):
+def DrawableMapNorth(x, y, size = 100, anchor = 'lowerleft'):
     """
     x: An integer for x placement
     y: An integer for y placement
@@ -1921,7 +1925,7 @@ def DrawableMapCompass(x, y, radius = 100, anchor = 'lowerleft'):
     return compass
 
 #----------------------------------------------------------------------
-def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
+def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256):
     """
     Draw the Grid for the given map width and height.
 
@@ -1964,7 +1968,7 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_
     return grid
 
 #----------------------------------------------------------------------
-def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize = 80, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
+def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize = 80, x_grid_by = 256, y_grid_by = 256):
     """
     Draw the labels on the sides of the canvas
 
@@ -2190,6 +2194,56 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize = 16, anchor 
     return ruler
 
 #----------------------------------------------------------------------
+def prepareStitchForPrint(mapInputFile, zoom, outputFile):
+    """
+    This function will generate a stitched tile with labeled grid, a compass and a scale ruler.
+    Useful for printouts.
+
+    mapfile: The source file to prepare for printout
+    zoom: The zoom level that is used by this file
+
+    # TODO: Pass the N, S, W, E coordinates of the mapfile, and make the printouts GPS friendly.
+    """
+    # Read the image
+    img = pgmagick.Image(mapInputFile)
+    # Create a canvas
+    canvas_margin_px = 144
+    canvas_width = img.columns() + canvas_margin_px * 2
+    canvas_height = img.rows() + canvas_margin_px * 2
+    canvas_geometry = pgmagick.Geometry(canvas_width, canvas_height)
+    canvas = pgmagick.Image(canvas_geometry, pgmagick.Color("white"))
+    # Add the image in the canvas
+    canvas.composite(img, pgmagick.GravityType.CenterGravity)
+
+    # Draw semitransparent grid
+    grid = DrawableMapGrid(img.columns(), img.rows(), canvas_margin_px)
+    grid.append(pgmagick.DrawableFillOpacity(0.3))
+    canvas.draw(grid)
+
+    # Add labels on the canvas margin
+    labels = DrawableMapLabels(img.columns(), img.rows(), canvas_margin_px)
+    canvas.draw(labels)
+
+    # Add a compass widget
+    compass_size = 110
+    compass_coords = (canvas.columns() - canvas_margin_px - 20, canvas_margin_px + 80)
+    compass = DrawableMapCompass(compass_coords[0], compass_coords[1], compass_size, anchor='upperright')
+    canvas.draw(compass)
+
+    # Add an 'N' on top of the compass to indicate where the north is.
+    north_size = int(compass_size / 2.5)
+    north_coords = (compass_coords[0] - compass_size, compass_coords[1] - 10)
+    north = DrawableMapNorth(north_coords[0], north_coords[1], north_size, anchor='bottom')
+    canvas.draw(north)
+
+    # Add a ruler widget to indicate the scale of the map.
+    ruler = DrawableScaleRuler(canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, 30, zoom, 35)
+    canvas.draw(ruler)
+
+    # Save the file in the outputFile
+    canvas.write(outputFile)
+
+#----------------------------------------------------------------------
 if __name__ == '__main__':
     """
     Write the main program here
@@ -2205,41 +2259,6 @@ if __name__ == '__main__':
     LOG.info("----------------------------------\n")
 
     #print options
-
-    #img = pgmagick.Image('/home/cyber/OSM/custom/stitched_maps/11/0_0.png')
-    #bgcolor = pgmagick.Color("#ffffff00")
-    #gravity = pgmagick.GravityType.CenterGravity
-    #canvas_margin_px = 144
-    #canvas_width = img.columns() + canvas_margin_px * 2
-    #canvas_height = img.rows() + canvas_margin_px * 2
-    #canvas_geometry = pgmagick.Geometry(canvas_width, canvas_height)
-    #canvas = pgmagick.Image(canvas_geometry, bgcolor)
-    #canvas.composite(img, gravity)
-
-    #grid = DrawableMapGrid(img.columns(), img.rows(), canvas_margin_px)
-    #grid.append(pgmagick.DrawableFillOpacity(0.3))
-    #canvas.draw(grid)
-
-    #labels = DrawableMapLabels(img.columns(), img.rows(), canvas_margin_px)
-    #canvas.draw(labels)
-
-    #compass_size = 110
-    #compass_coords = (canvas.columns() - canvas_margin_px - 20, canvas_margin_px + 80)
-    #compass = DrawableMapCompass(compass_coords[0], compass_coords[1], compass_size, anchor='upperright')
-    #canvas.draw(compass)
-
-    #north_size = int(compass_size / 2.5)
-    #north_coords = (compass_coords[0] - compass_size, compass_coords[1] - 10)
-    #north = DrawableMapNorth(north_coords[0], north_coords[1], north_size, anchor='bottom')
-    #canvas.draw(north)
-
-    #ruler = DrawableScaleRuler(canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, 30, 11, 35)
-    #canvas.draw(ruler)
-
-    #canvas.display()
-    #canvas.write('/home/cyber/OSM/custom/stitched_maps/11/0_0_print.png')
-    #exit()
-
     try:
 
         for zoom in options.zoom_level:
@@ -2326,6 +2345,38 @@ if __name__ == '__main__':
 
             if not options.skip_stitching or options.only_calibrate:
                 tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
+
+            # If the user has asked to prepare paper friendly maps, do it now.
+            if options.printout:
+                total_tiles = dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']
+
+                myProgressBarFd = sys.stderr
+                # If log level is set to 1000 (logging is disabled), or DEBUG, then redirect
+                # the progress bar to /dev/null (use os.devnull to support windows as well)
+                if LOG.getEffectiveLevel() == 1000 or LOG.getEffectiveLevel() == logging.DEBUG:
+                    myProgressBarFd = open(os.devnull, "w")
+
+                widgets = ['Preparing paper friendly maps ', progressbar.Counter(format='%{}d'.format(len(str(total_tiles)))), '/{}: '.format(total_tiles),
+                           progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
+
+                pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_tiles, fd = myProgressBarFd).start()
+
+                printer_maps_path = os.path.join(options.project_folder, "paper_maps", str(zoom))
+                if not os.path.isdir(printer_maps_path):
+                    os.makedirs(printer_maps_path)
+                for y in xrange(dimensions['horizontal_divide_by']):
+                    for x in xrange(dimensions['vertical_divide_by']):
+                        inputFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.png'.format(x, y))
+                        outputFile = os.path.join(printer_maps_path, '{}_{}_print.png'.format(x, y))
+                        if os.path.isfile(inputFile):
+                            if not os.path.isfile(outputFile):
+                                prepareStitchForPrint(inputFile, zoom, outputFile)
+                                pbar.currval += 1
+                            pbar.update(pbar.currval)
+                        else:
+                            error_and_exit("File '{}' not found.\nYou need to stitch the necessary files before creating paper friendly maps.".format(inputFile))
+
+                pbar.finish()
 
             properties = """Provider: {}
 Overlay: {}
