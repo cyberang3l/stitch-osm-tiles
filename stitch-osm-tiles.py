@@ -450,6 +450,7 @@ class SmartFormatter(argparse.HelpFormatter):
         return argparse.HelpFormatter._split_lines(self, text, width)
 #----------------------------------------------------------------------
 
+# TODO: Implement the --retry-failed functionality.
 def _command_Line_Options():
     """
     Define the accepted command line arguments in this function
@@ -816,10 +817,13 @@ def read_zoom_config(zoom, options):
                                                )
                                                )
                         else:
-                            error_and_exit("Option '{0}' is defined in the current run, but it doesn't exist in the\n"
-                                           "configuration file '{1}'."
+                            error_and_exit("Option '{0}' is defined in the current run, but it doesn't exist in the configuration file '{1}'.\n"
                                            "This option should match since a configuration file exists (indicating that you have"
-                                           "already ran the script for the specified zoom level in the current project folder)")
+                                           "already ran the script for the specified zoom level in the current project folder)".format(
+                                               key,
+                                               zoom_conf
+                                           )
+                                           )
 
     except IOError as e:
         # If the error number is 2 (no such file or directory), the conf file does no
@@ -2203,6 +2207,10 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile):
     zoom: The zoom level that is used by this file
 
     # TODO: Pass the N, S, W, E coordinates of the mapfile, and make the printouts GPS friendly.
+    #
+    #       Add an option to let use choose paper-type friendly stitches (A4, A3 etc...)
+    #       Then the function should cut the maps in smaller part so that they can fit in the
+    #       chosen paper type without shrinking.
     """
     # Read the image
     img = pgmagick.Image(mapInputFile)
@@ -2313,6 +2321,7 @@ if __name__ == '__main__':
             config_dict['degrees_by_northern_most_tile'] = {str(tileWorker.tilenums2deg(tile_west, tile_north)[0]): 1}
             config_dict['degrees_by_eastern_most_tile'] = {str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1]): 1}
             config_dict['degrees_by_southern_most_tile'] = {str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]): 1}
+            config_dict['max_resolution'] = {str(options.max_resolution_px): 1}
 
             # Check if there is an existing config file, and if the necessary config
             # values do match, warn the user and exit.
@@ -2395,6 +2404,7 @@ W_degrees_by_western_most_tile: {}
 N_degrees_by_northern_most_tile: {}
 E_degrees_by_eastern_most_tile: {}
 S_degrees_by_southern_most_tile: {}
+max_resolution: {}
 total_stitched_tiles: {}
 resolution_per_stitch: {}""".format(
                                 config_dict['provider'].keys().pop(),
@@ -2414,6 +2424,7 @@ resolution_per_stitch: {}""".format(
                                 config_dict['degrees_by_northern_most_tile'].keys().pop(),
                                 config_dict['degrees_by_eastern_most_tile'].keys().pop(),
                                 config_dict['degrees_by_southern_most_tile'].keys().pop(),
+                                config_dict['max_resolution'].keys().pop(),
                                 config_dict['total_stitched_tiles'].keys().pop(),
                                 config_dict['resolution_per_stitch'].keys().pop()
                             )
