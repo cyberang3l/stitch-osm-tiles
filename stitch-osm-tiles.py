@@ -1020,8 +1020,8 @@ class stitch_osm_tiles(object):
         # calculated with the following formula:
         #              40075017*cos(lat/180*pi)
         #
-        #              At the equator it will always be max the latitude is zero and the cos of 0 is 1.
-        #              At the poles the latitude is +-90 degrees, and the "lat/180*pi" becomes +-0.5 and the cos of +-0.5 is 0.
+        #              At the equator it will always be max. The latitude is zero and the cos of 0 is 1.
+        #              At the poles the latitude is +-90 degrees, and the "lat/180*pi" becomes +-0.5*pi and the cos of +-0.5*pi is 0.
         #              At any other latitude, the circumference will get values in between.
         #
         # Each tile in OSM is 256x256px and each complete map is composed from 2^zoom_level tiles.
@@ -1029,13 +1029,16 @@ class stitch_osm_tiles(object):
         # Eventually, the size of each pixel at different latitudes is given by this formula:
         #         40075017*cos(lat/180*pi)/(256*2^zoom_level.)
         #            or
-        #         40075017*cos(lat/180*pi)/*2^(zoom_level+8)
+        #         40075017*cos(lat/180*pi)/*2^(zoom_level+8) # 256 = 2^8
         #
         # Since each tile covers a range of longtitudes and latitudes, we need to find the latitude in the middle of the tile
         # and calculate the MMB1 value based on this.
+        #
+        # TODO: Change all occurences of '2**(zoom+8)' to 'self._tile_width*(2**8)', because if we export tiles of different size
+        #       zoom+8 will not be valid. The +8 part is coming for the fact that 256 = 2**8
         """
         latitude_mid_of_tile = S + (N - S)/2
-        MMB1 = 40075017 * math.cos(latitude_mid_of_tile / 180 * math.pi) / 2**(zoom+8)
+        MMB1 = 40075017 * math.cos(float(latitude_mid_of_tile) / 180 * math.pi) / 2**(zoom+8)
 
         N_OZI = self._convert_degrees_to_OZI_deg(N, 'N')
         S_OZI = self._convert_degrees_to_OZI_deg(S, 'S')
@@ -1961,7 +1964,7 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_
     return grid
 
 #----------------------------------------------------------------------
-def DrawableMapLabels(map_width, map_height, canvas_margin, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
+def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize = 80, x_grid_by = 256, y_grid_by = 256, color = pgmagick.Color('black')):
     """
     Draw the labels on the sides of the canvas
 
@@ -1971,15 +1974,14 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, x_grid_by = 256, y_g
     """
     labels = pgmagick.DrawableList()
 
-    fontSize = 80
     fontname = 'FreeSans'
     labels.append(pgmagick.DrawableFont(fontname, pgmagick.StyleType.NormalStyle, 600, pgmagick.StretchType.NormalStretch))
-    labels.append(pgmagick.DrawablePointSize(fontSize))
+    labels.append(pgmagick.DrawablePointSize(fontsize))
     labels.append(pgmagick.DrawableGravity(pgmagick.GravityType.NorthWestGravity))
 
     # Use an image object, in order to make use of the fontmetrics capability.
     text = pgmagick.Image()
-    text.fontPointsize(fontSize)
+    text.fontPointsize(fontsize)
     text.font(fontname)
     fontmetric = pgmagick.TypeMetric()
 
@@ -2019,6 +2021,173 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, x_grid_by = 256, y_g
 
     return labels
 
+#----------------------------------------------------------------------
+def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize = 16, anchor = 'lowerleft'):
+    """
+    The ruler size defines the thickness of the ruler.
+
+    The actual height of the ruler will be its thickness plus the tick marks and the labels.
+
+    The zoom level the openstreetmap zoom level for the specified stitched image.
+
+    The formula to calculate the horizontalMetersPerPixel is the same with the formula used for MMB1
+    calculation when calibrating OziExplorer files. Look at the function generate_OZI_map_file() for
+    more details
+
+    # TODO: Change all occurences of '2**(zoom+8)' to 'self._tile_width*(2**8)', because if we export
+            tiles of different size
+    #       zoom+8 will not be valid. The +8 part is coming for the fact that 256 = 2**8
+    """
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
+    if anchor not in anchor_vals:
+        print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
+        raise KeyError
+
+    horizontalMetersPerPixel = 40075017 * math.cos(latitude_mid_of_tile / 180.0 * math.pi) / 2**(zoom+8)
+
+    ruler = pgmagick.DrawableList()
+    black = pgmagick.Color('black')
+    white = pgmagick.Color('white')
+
+    fontname = 'FreeSans'
+    fontsize = rulersize
+    ruler.append(pgmagick.DrawableFont(fontname, pgmagick.StyleType.NormalStyle, 100, pgmagick.StretchType.NormalStretch))
+    ruler.append(pgmagick.DrawablePointSize(fontsize))
+    ruler.append(pgmagick.DrawableGravity(pgmagick.GravityType.NorthWestGravity))
+
+    # Use an image object, in order to make use of the fontmetrics capability.
+    text = pgmagick.Image()
+    text.fontPointsize(fontsize)
+    text.font(fontname)
+    fontmetric = pgmagick.TypeMetric()
+    # The tallest text we use in the ruler is the letter 'k'
+    # So get its height in order to add it to the anchor_y
+    max_text_height = pgmagick.TypeMetric()
+    pgmagick.Image.fontTypeMetrics(text, 'k', max_text_height)
+
+    # We want the ruler to be at least size pixels in height.
+    # If the ruler is height pixels, the width should be around 14 * height
+    # In the width, we will draw two ruler blocks.
+    height = rulersize
+    half_width = height * 7
+
+    m = int(half_width * horizontalMetersPerPixel)
+    m_lab = "m"
+    len_m = len(str(m))
+
+    if  m > 1000:
+        # If the half length of the width is more than 1000 meters,
+        # round to the nearest major number in km.
+        m = int(round(m, -len_m + 1))
+        m = m / 1000
+        m_lab = "km"
+        # Now we have km. If the values are less than 10000 km, round
+        # them to the nearest 1, 2, 3, 5
+        if m < 10000 and m > 3000:
+            m = int(round(m / 5000.0) * 5000)
+        elif m < 1000 and m > 300:
+            m = int(round(m / 500.0) * 500)
+        elif m < 100 and m > 30:
+            m = int(round(m / 50.0) * 50)
+        elif m < 10 and m > 3:
+            m = int(round(m / 5.0) * 5)
+    else:
+        m = int(round(m, -len_m + 1))
+        if m < 1000 and m > 300:
+            m = int(round(m / 500.0) * 500)
+        elif m < 100 and m > 30:
+            m = int(round(m / 50.0) * 50)
+        elif m < 10 and m > 3:
+            m = int(round(m / 5.0) * 5)
+
+    if m_lab == 'm':
+        actual_pixels_for_half_width = horizontalMetersPerPixel * half_width
+    elif m_lab == 'km':
+        actual_pixels_for_half_width = (horizontalMetersPerPixel / 1000) * half_width
+
+    reformed_half_width = int(round((m / actual_pixels_for_half_width) * half_width))
+    width = reformed_half_width * 2
+
+    # The height variable holds only the height of the bar.
+    # The actual height is more, because we add tick marks and labels.
+    # So the anchor_height must take into account these additional pixels.
+    #
+    # If I want to be 100% accurate, I have to take into account the text on the right and left
+    # of the bar and change the width accordingly as well, but that's not much so I do not bother now.
+    anchor_height = height + (3.5 * height / 4) + max_text_height.textHeight() - max_text_height.ascent() - max_text_height.descent()
+    if anchor == 'lowerleft':
+        anchor_x = 0
+        anchor_y = height
+    elif anchor == 'lowerright':
+        anchor_x = width
+        anchor_y = height
+    elif anchor == 'upperleft':
+        anchor_x = 0
+        anchor_y = -(anchor_height)
+    elif anchor == 'upperright':
+        anchor_x = width
+        anchor_y = -anchor_height
+    elif anchor == 'middle':
+        anchor_x = width / 2
+        anchor_y = -anchor_height / 2
+    elif anchor == 'bottom':
+        anchor_x = width / 2
+        anchor_y = height
+    elif anchor == 'top':
+        anchor_x = width / 2
+        anchor_y = -anchor_height
+    elif anchor == 'left':
+        anchor_x = 0
+        anchor_y = -anchor_height / 2
+    elif anchor == 'right':
+        anchor_x = width
+        anchor_y = -anchor_height / 2
+
+    ruler.append(pgmagick.DrawableStrokeColor(black))
+    # Generate major/minor ticks
+    y_pos_1 = y - anchor_y
+    counter = 0
+    prev_lab = 0
+    lab = 0
+    for x_pos in xfrange(x, x + width + 1, width / 20.0):
+        # Every 10th tick, we need a major tick
+        # Every 5th tick we need an intermediate tick
+        if counter % 10 == 0:
+            y_pos_2 = y - int((3.5 * height / 4))
+            if counter:
+                prev_lab += m
+                lab = '{} {}'.format(prev_lab, m_lab)
+            else:
+                lab = prev_lab
+        elif counter % 5 == 0:
+            y_pos_2 = y - (height / 2)
+        else:
+            y_pos_2 = y - (height / 4)
+            lab = None
+        x_pos = int(round(x_pos)) - anchor_x
+        y_pos_2 = y_pos_2 - anchor_y
+
+        if lab is not None:
+            pgmagick.Image.fontTypeMetrics(text, str(lab), fontmetric)
+            x_lab_pos = x_pos - fontmetric.textWidth() / 2
+            y_lab_pos = y_pos_1 - height
+            ruler.append(pgmagick.DrawableText(x_lab_pos, y_lab_pos, str(lab)))
+
+        ruler.append(pgmagick.DrawableLine(x_pos, y_pos_1, x_pos, y_pos_2))
+        counter += 1
+
+    ruler.append(pgmagick.DrawableFillColor(white))
+    ruler.append(pgmagick.DrawableRectangle(x - anchor_x,
+                                            y - anchor_y,
+                                            x + reformed_half_width - anchor_x,
+                                            y + height - anchor_y))
+    ruler.append(pgmagick.DrawableFillColor(black))
+    ruler.append(pgmagick.DrawableRectangle(x + reformed_half_width - anchor_x,
+                                            y - anchor_y,
+                                            x + width - anchor_x,
+                                            y + height - anchor_y))
+
+    return ruler
 
 #----------------------------------------------------------------------
 if __name__ == '__main__':
@@ -2036,15 +2205,6 @@ if __name__ == '__main__':
     LOG.info("----------------------------------\n")
 
     #print options
-
-    ### Small image for quick experimentation
-    ##im = pgmagick.Image(pgmagick.Geometry(1000, 1000), pgmagick.Color('white'))
-    ##north = DrawableMapNorth(200, 95, 30, anchor='bottom')
-    ##im.draw(north)
-    ##compass = DrawableMapCompass(200, 200, 100, anchor='middle')
-    ##im.draw(compass)
-    ##im.display()
-    ##exit()
 
     #img = pgmagick.Image('/home/cyber/OSM/custom/stitched_maps/11/0_0.png')
     #bgcolor = pgmagick.Color("#ffffff00")
@@ -2072,6 +2232,9 @@ if __name__ == '__main__':
     #north_coords = (compass_coords[0] - compass_size, compass_coords[1] - 10)
     #north = DrawableMapNorth(north_coords[0], north_coords[1], north_size, anchor='bottom')
     #canvas.draw(north)
+
+    #ruler = DrawableScaleRuler(canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, 30, 11, 35)
+    #canvas.draw(ruler)
 
     #canvas.display()
     #canvas.write('/home/cyber/OSM/custom/stitched_maps/11/0_0_print.png')
