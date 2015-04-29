@@ -2198,7 +2198,7 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize = 16, anchor 
     return ruler
 
 #----------------------------------------------------------------------
-def prepareStitchForPrint(mapInputFile, zoom, outputFile):
+def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
     """
     This function will generate a stitched tile with labeled grid, a compass and a scale ruler.
     Useful for printouts.
@@ -2206,9 +2206,9 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile):
     mapfile: The source file to prepare for printout
     zoom: The zoom level that is used by this file
 
-    # TODO: Pass the N, S, W, E coordinates of the mapfile, and make the printouts GPS friendly.
-    #
-    #       Add an option to let use choose paper-type friendly stitches (A4, A3 etc...)
+    N, S, W, E are the corresponding edge coordinates of the mapInputFile.
+
+    # TODO: Add an option to let use choose paper-type friendly stitches (A4, A3 etc...)
     #       Then the function should cut the maps in smaller part so that they can fit in the
     #       chosen paper type without shrinking.
     """
@@ -2245,7 +2245,8 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile):
     canvas.draw(north)
 
     # Add a ruler widget to indicate the scale of the map.
-    ruler = DrawableScaleRuler(canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, 30, zoom, 35)
+    latMidTile = S + (N - S) / 2.0
+    ruler = DrawableScaleRuler(canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, latMidTile, zoom, 35)
     canvas.draw(ruler)
 
     # Save the file in the outputFile
@@ -2379,8 +2380,27 @@ if __name__ == '__main__':
                         outputFile = os.path.join(printer_maps_path, '{}_{}_print.png'.format(x, y))
                         if os.path.isfile(inputFile):
                             if not os.path.isfile(outputFile):
-                                prepareStitchForPrint(inputFile, zoom, outputFile)
-                                pbar.currval += 1
+                                mapCalibrationFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.map'.format(x, y))
+                                if os.path.isfile(mapCalibrationFile):
+                                    r = quick_regexp()
+                                    N = S = W = E = None
+                                    with open(mapCalibrationFile) as f:
+                                        for line in f:
+                                            if r.search('MMPLL\s*,\s*1\s*,\s*(.+)\s*,\s*(.+)', line):
+                                                W = float(r.groups[0])
+                                                N = float(r.groups[1])
+                                            elif r.search('MMPLL\s*,\s*3\s*,\s*(.+)\s*,\s*(.+)', line):
+                                                E = float(r.groups[0])
+                                                S = float(r.groups[1])
+
+                                    if (N == None or S == None or W == None or E == None):
+                                        error_and_exit("Could not read the coordinates from the map file '{}' properly.".format(mapCalibrationFile))
+
+                                    prepareStitchForPrint(inputFile, zoom, outputFile, N, S, W, E)
+                                    pbar.currval += 1
+                                else:
+                                    error_and_exit("Looked for {}, but I could not locate the specified map calibration file.\n"
+                                                   "The map calibration file is needed in order to calculate the scale of the map.".format(mapCalibrationFile))
                             pbar.update(pbar.currval)
                         else:
                             error_and_exit("File '{}' not found.\nYou need to stitch the necessary files before creating paper friendly maps.".format(inputFile))
