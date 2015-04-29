@@ -48,7 +48,7 @@ __all__ = [
 # TODO: Add -l -r -t -b for left, right, top, bottom tiles to be downloaded (if the user doesn't want to provide the coordinates)
 
 PROGRAM_NAME = 'stitch-osm-tiles'
-VERSION = '0.0.1'
+VERSION = '0.1.0'
 AUTHOR = 'Vangelis Tasoulas'
 
 LOG = logging.getLogger('default.' + __name__)
