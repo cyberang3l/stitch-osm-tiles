@@ -1394,7 +1394,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         im_w = img.columns()
         im_h = img.rows()
         if im_w > im_h:
-            geo_size = "{}x{}".format(x_res, int(math.ceil((float(im_h) / x_res)) * im_w))
+            geo_size = "{}x{}".format(x_res, int(math.ceil((float(im_h) / im_w)) * x_res))
         else:
             geo_size = "{}x{}".format(int(math.ceil((float(im_w) / im_h) * y_res)), y_res)
 
