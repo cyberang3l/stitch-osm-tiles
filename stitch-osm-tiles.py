@@ -1391,8 +1391,14 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
         LOG.debug("Generating thumbnail '{}'".format(thumb_filepath))
 
-        geometry = pgmagick.Geometry(x_res, y_res)
-        geometry.aspect(True)
+        im_w = img.columns()
+        im_h = img.rows()
+        if im_w > im_h:
+            geo_size = "{}x{}".format(x_res, int(math.ceil((float(im_h) / x_res)) * im_w))
+        else:
+            geo_size = "{}x{}".format(int(math.ceil((float(im_w) / im_h) * y_res)), y_res)
+
+        geometry = pgmagick.Geometry(geo_size)
         img.scale(geometry)
         img.write(thumb_filepath)
 
