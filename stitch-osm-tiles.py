@@ -60,32 +60,28 @@ PROVIDERS = OrderedDict([
     ('Mapquest', {
         'attribution':'Tiles Courtesy of MapQuest',
         'url':'http://www.mapquest.com',
-        'tile_servers': [ 'http://otile{alts:1,2,3,4}.mqcdn.com/tiles/1.0.0/{layer}/{z}/{x}/{y}.{ext}' ], # The tile servers that serve the tiles for this provider.
-        'extension': 'jpg',     # The default extension support by this provider
+        'tile_servers': [ 'https://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoibWFwcXVlc3QiLCJhIjoiY2Q2N2RlMmNhY2NiZTRkMzlmZjJmZDk0NWU0ZGJlNTMifQ.mPRiEubbajc6a5y9ISgydg' ], # The tile servers that serve the tiles for this provider.
+        'extension': 'png',     # The default extension support by this provider
         'zoom_levels': '0-18',  # The zoom levels supported by this provider
         'layers': OrderedDict([
-            ('map', {
-                'desc': 'Default MapQuest Style'
+            ('mapquest.streets', {
+                'desc': 'Default MapQuest Style for US'
             }),
-            ('osm', {
-                'desc': 'Default OSM Style'
+            ('mapquest.satellite', {
+                'desc': 'Satellite MapQuest Style for US'
             }),
-            ('sat', {
-                'desc': 'Satellite imagery',
-                'zoom_levels': '0-11'
+            ('mapquest.dark', {
+                'desc': 'Dark MapQuest Style for US'
             }),
-            ('sat2', {
-                'name': 'sat',
-                'desc': 'Higher Quality Satellite imagery',
-                'zoom_levels': '0-13',
-                'tile_servers': [
-                        'http://ttiles0{alts:1,2,3,4}.mqcdn.com/tiles/1.0.0/vy/{layer}/{z}/{x}/{y}.{ext}'
-                ]
+            ('mapquest.streets-mb', {
+                'desc': 'Default MapQuest Style for the rest of the world (Non-US)'
             }),
-            ('hyb', {
-                'desc': 'Hybrid tiles',
-                'extension': 'png'
+            ('mapquest.satellite-mb', {
+                'desc': 'Satellite MapQuest Style for the rest of the world (Non-US)'
             })
+            ('mapquest.dark-mb', {
+                'desc': 'Dark MapQuest Style for the rest of the world (Non-US)'
+            }),
         ])
     }),
 
@@ -108,18 +104,6 @@ PROVIDERS = OrderedDict([
         ])
     }),
 
-    ('Mapbox', {
-        'attribution':'Map tiles by Mapbox',
-        'url':'http://www.mapbox.com/about/maps/',
-        'tile_servers': [ 'http://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJncjlmd0t3In0.DmZsIeOW-3x-C5eX-wAqTw' ],
-        'extension': 'jpg',
-        'zoom_levels': '0-17',
-        'layers': OrderedDict([
-            ('openstreetmap.map-inh7ifmo', {
-                'desc': 'High quality satellite imagery'
-            })
-        ])
-    })
 ])
 
 #----------------------------------------------------------------------
