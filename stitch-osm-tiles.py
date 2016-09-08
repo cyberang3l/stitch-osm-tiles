@@ -78,10 +78,10 @@ PROVIDERS = OrderedDict([
             }),
             ('mapquest.satellite-mb', {
                 'desc': 'Satellite MapQuest Style for the rest of the world (Non-US)'
-            })
+            }),
             ('mapquest.dark-mb', {
                 'desc': 'Dark MapQuest Style for the rest of the world (Non-US)'
-            }),
+            })
         ])
     }),
 
