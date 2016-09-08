@@ -95,14 +95,81 @@ PROVIDERS = OrderedDict([
             ('toner', {
                 'desc': "Toner default"
             }),
-            ('toner-hybrid', {}),
-            ('toner-labels', {}),
-            ('toner-lines', {}),
-            ('toner-background', {}),
-            ('toner-lite', {}),
-            ('watercolor', {})
+            ('toner-hybrid', {'desc': ''}),
+            ('toner-labels', {'desc': ''}),
+            ('toner-lines', {'desc': ''}),
+            ('toner-background', {'desc': ''}),
+            ('toner-lite', {'desc': ''}),
+            ('watercolor', {'desc': ''})
         ])
     }),
+
+    # For more maps of Norway take a look here: https://kartkatalog.geonorge.no
+    #                                 and here: https://www.norgeskart.no
+    ('Statkart', {
+        'attribution':'http://www.kartverket.no/kart/gratis-kartdata/wms-tjenester/',
+        'url':'http://www.kartverket.no',
+        'tile_servers':['http://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers={layer}&zoom={z}&x={x}&y={y}'],
+        'extension': 'png',
+        'zoom_levels': '0-17',
+        'layers': OrderedDict([
+            ('topo2', {
+                'desc': 'High Quality Topo Maps of Norway'
+            }),
+            ('topo2graatone', {
+                'desc': 'Same as topo2 in Grayscale'
+            }),
+            ('toporaster3', {
+                'desc': 'High Quality TopoRaster Maps of Norway'
+            }),
+            ('europa', {
+                'desc': 'Main Roads of Whole Europe'
+            }),
+# The following URL Works with WMTS
+#            ('norges_grunnkart', {
+#                'desc': 'High Quality Base Maps of Norway',
+#                'tile_servers': ['https://gatekeeper2.geonorge.no/BaatGatekeeper/gk/gk.cache_wmts?gkt=3D162D6480FF44742FF6C4E8599E43690FC759A18E1D6DF38DF829231A08590ADB1584C7A1E10204A7002ACA2E9D21402F15CFFEDCBD29AA8D018F0853CD0DA1&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=norges_grunnkart&STYLE=default&TILEMATRIXSET=EPSG:32633&TILEMATRIX=EPSG:32633:{z}&TILEROW={y}&TILECOL={x}&FORMAT=image/{ext}']
+#            }),
+            ('norges_grunnkart_graatone', {
+                'desc': 'High Quality Base Maps of Norway in Grayscale'
+            }),
+            ('kartdata2', {
+                'desc': 'Only Maps for Norway'
+            }),
+#            ('fjellskygge', {
+#                'desc': 'Mountain shadows'
+#            }),
+            ('sjo_hovedkart2', {
+                'desc': 'Sea Map of Norway'
+            }),
+            ('sjokartraster', {
+                'desc': 'Sea Raster Map of Norway'
+            }),
+# The following URL Works with WMTS
+#            ('Geocache_UTM33_WGS84', {
+#                'desc': '',
+#                'tile_servers': ['http://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_WGS84/GeocacheBasis/MapServer/tile/{z}/{y}/{x}'],
+#                'extension': 'jpg'
+#            })
+
+        ])
+    }),
+
+    ('ArcGIS', {
+        'attribution':'',
+        'url':'http://www.arcgis.com/',
+        'tile_servers': ['http://server.arcgisonline.com/ArcGIS/rest/services/{layer}/MapServer/tile/{z}/{y}/{x}'],
+        'extension': 'jpg',
+        'zoom_levels': '0-17',
+        'layers': OrderedDict([
+            ('World_Topo_Map', {
+                'desc': 'World Topo Map'
+            }),
+            ('World_Street_Map', {
+                'desc': 'World Street Map'
+            })
+        ])
+    })
 
 ])
 
@@ -589,7 +656,7 @@ def _command_Line_Options():
                         metavar="LAYER",
                         help="R|Choose one of the available layers for the chosen\n"
                         "provider. If none is chosen, the first one will be\n"
-                        "used. Layers per provider:\n" + '\n'.join(["   * " + s + '\n' + "\n".join(['      - ' + l for l in PROVIDERS[s]['layers']]) for s in PROVIDERS]))
+                        "used. Layers per provider:\n" + '\n'.join(["   * " + s + '\n' + "\n".join(['      - ' + l + ' \t# ' + PROVIDERS[s]['layers'][l]['desc'] for l in PROVIDERS[s]['layers']]) for s in PROVIDERS]))
 
     opts = parser.parse_args()
 
