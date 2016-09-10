@@ -1282,7 +1282,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     pbar_val = progress_bar.currval + 1
                     progress_bar.update(pbar_val)
 
-                self._itemsInProcessing.remove(url)
+                try:
+                    self._itemsInProcessing.remove(url)
+                except ValueError:
+                    error_and_exit("Something strange happened...\nURL '{}' has already been removed from the items to be processed.\nPlease retry..".format(url))
 
                 inQueue.task_done()
         except KeyboardInterrupt:
