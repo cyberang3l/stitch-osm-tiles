@@ -1234,7 +1234,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                         except RuntimeError, e:
                             e = sys.exc_info()[0]
                             retval = (e, url, download_path, 'UnknownGraphicsMagicError')
-                    except socket.error:
+                    except socket.error as e:
                         retval = (e, url, download_path, 'SocketError while reading response')
 
                 outQueue.put(retval)
