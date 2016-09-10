@@ -48,7 +48,7 @@ __all__ = [
 # TODO: Add -l -r -t -b for left, right, top, bottom tiles to be downloaded (if the user doesn't want to provide the coordinates)
 
 PROGRAM_NAME = 'stitch-osm-tiles'
-VERSION = '0.1.0'
+VERSION = '1.0.0'
 AUTHOR = 'Vangelis Tasoulas'
 
 LOG = logging.getLogger('default.' + __name__)
@@ -101,6 +101,58 @@ PROVIDERS = OrderedDict([
             ('toner-background', {'desc': ''}),
             ('toner-lite', {'desc': ''}),
             ('watercolor', {'desc': ''})
+        ])
+    }),
+
+    ('Mapbox', {
+        'attribution':'Mapbox, OpenStreeMap',
+        'url':'https://www.mapbox.com',
+        'tile_servers': [ 'http://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoidGF0aWFuYSIsImEiOiJjaWs1bzRiZGQwMDdjcHRrc285bTdwcWU5In0.0EWPVHyjaE9jTzNvOiIO-w' ],
+        'extension': 'png',
+        'zoom_levels': '0-18',
+        'layers': OrderedDict([
+            ('mapbox.outdoors', {
+                'desc': "Sample: http://api.mapbox.com/v4/mapbox.outdoors.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627"
+            }),
+            ('mapbox.run-bike-hike', {
+                'desc': "Sample: http://api.mapbox.com/v4/mapbox.run-bike-hike.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627"
+            }),
+            ('mapbox.streets', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.streets.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.streets-basic', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.streets-basic.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.emerald', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.emerald.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.dark', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.dark.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.light', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.light.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.high-contrast', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.high-contrast.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.satellite', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.satellite.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+#            ('mapbox.streets-satellite', {
+#                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.streets-satellite.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+#            }),
+            ('mapbox.wheatpaste', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.wheatpaste.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.comic', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.comic.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.pirates', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.pirates.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            }),
+            ('mapbox.pencil', {
+                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.pencil.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
+            })
         ])
     }),
 
