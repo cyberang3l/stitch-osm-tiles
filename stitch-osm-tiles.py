@@ -1225,14 +1225,17 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 except socket.timeout as e:
                     retval = (e, url, download_path, 'SocketTimeout')
                 else:
-                    tile = resp.read()
                     try:
-                        img = gmImage(pgmagick.Blob(tile))
-                        img.write(download_path)
-                        retval = ([img, tile], url, download_path, None)
-                    except RuntimeError, e:
-                        e = sys.exc_info()[0]
-                        retval = (e, url, download_path, 'UnknownGraphicsMagicError')
+                        tile = resp.read()
+                        try:
+                            img = gmImage(pgmagick.Blob(tile))
+                            img.write(download_path)
+                            retval = ([img, tile], url, download_path, None)
+                        except RuntimeError, e:
+                            e = sys.exc_info()[0]
+                            retval = (e, url, download_path, 'UnknownGraphicsMagicError')
+                    except socket.error:
+                        retval = (e, url, download_path, 'SocketError while reading response')
 
                 outQueue.put(retval)
                 inQueue.task_done()
