@@ -2539,6 +2539,7 @@ if __name__ == '__main__':
             properties = """Provider: {}
 Overlay: {}
 Tile Format: {}
+Stiched Tile Format: {}
 Zoom: {}
 longtitude1 (W): {}
 longtitude2 (E): {}
@@ -2559,6 +2560,7 @@ resolution_per_stitch: {}""".format(
                                 config_dict['provider'].keys().pop(),
                                 config_dict['overlay'].keys().pop(),
                                 config_dict['tile_format'].keys().pop(),
+                                config_dict['stitched_tile_format'].keys().pop(),
                                 config_dict['zoom'].keys().pop(),
                                 config_dict['longtitude1-west'].keys().pop(),
                                 config_dict['longtitude2-east'].keys().pop(),
