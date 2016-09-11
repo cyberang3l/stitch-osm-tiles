@@ -1776,8 +1776,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             for x in xrange(dimensions['horizontal_divide_by']):
                 # The filename and extension is used in the ozi .map file, to find the matching image map
                 filename = '{}_{}'.format(y, x)
-                # TODO: Add a command line option so that the user can choose either to save on the original format, always convert to jpg, or convert to png.
-                extension = 'png'
+                extension = self.saved_stitched_tile_format
 
                 map_file = os.path.join(stitches_path, '{}.{}'.format(filename, 'map'))
 
@@ -2505,8 +2504,8 @@ if __name__ == '__main__':
                     os.makedirs(printer_maps_path)
                 for y in xrange(dimensions['horizontal_divide_by']):
                     for x in xrange(dimensions['vertical_divide_by']):
-                        inputFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.png'.format(x, y))
-                        outputFile = os.path.join(printer_maps_path, '{}_{}_print.png'.format(x, y))
+                        inputFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.{}'.format(x, y, options.stitched_tile_format))
+                        outputFile = os.path.join(printer_maps_path, '{}_{}_print.{}'.format(x, y, options.stitched_tile_format))
                         if os.path.isfile(inputFile):
                             if not os.path.isfile(outputFile):
                                 mapCalibrationFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.map'.format(x, y))
