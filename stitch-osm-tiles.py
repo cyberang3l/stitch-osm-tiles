@@ -652,6 +652,16 @@ def _command_Line_Options():
                         "     'original' <- This is the default and it will\n"
                         "                   just save the tiles in the format\n"
                         "                   provided by the provider.")
+    parser.add_argument("--save-stitched-tile-format",
+                        action="store",
+                        dest="stitched_tile_format",
+                        choices=["png", "jpg"],
+                        default="png",
+                        metavar="IMG_FMT",
+                        help="R|The format to save the stitched tiles.\n"
+                        "  Available choices:\n"
+                        "     'png' (default)\n"
+                        "     'jpg'\n")
     parser.add_argument("-r", "--retry-failed",
                         action="store_true",
                         dest="retry_failed",
@@ -868,7 +878,7 @@ def validate_arguments(options):
             if layer_extension:
                 server_string = re.sub('\{ext\}', layer_extension, server_string)
 
-            # If the user hasn't provided a tile format (using original), and the is no layer_extension,
+            # If the user hasn't provided a tile format (using original), and if there is no layer_extension,
             # fallback to the default png file format.
             if options.tile_format == 'original':
                 if layer_extension:
@@ -971,6 +981,7 @@ class stitch_osm_tiles(object):
     def __init__(self,
                  zoom,
                  saved_tile_format,
+                 saved_stitched_tile_format,
                  tile_servers = None,
                  project_folder = 'maps_project',
                  max_dimensions = 10000,
@@ -1011,6 +1022,7 @@ class stitch_osm_tiles(object):
         # The project name (equals to the project folder)
         self.project_folder = project_folder
         self.saved_tile_format = saved_tile_format
+        self.saved_stitched_tile_format = saved_stitched_tile_format
         self.parallelDownloadThreads = parallelDownloadThreads
         self.parallelStitchingThreads = parallelStitchingThreads
         self._tile_height = None
@@ -1630,7 +1642,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         for y in xrange(dimensions['vertical_divide_by']):
             for x in xrange(dimensions['horizontal_divide_by']):
                 # The stitch_key must contain the final image extension
-                stitch_key = '{}_{}.png'.format(y, x)
+                stitch_key = '{}_{}.{}'.format(y, x, self.saved_stitched_tile_format)
 
                 # The files_stitch array stores the filename path of all the original images to be stitched in the current stitch.
                 files_stitch = []
@@ -2392,6 +2404,7 @@ if __name__ == '__main__':
 
             tileWorker = stitch_osm_tiles(zoom = zoom,
                                           saved_tile_format = options.tile_format,
+                                          saved_stitched_tile_format = options.stitched_tile_format,
                                           tile_servers = options.tile_servers,
                                           project_folder = options.project_folder,
                                           max_dimensions = options.max_resolution_px,
