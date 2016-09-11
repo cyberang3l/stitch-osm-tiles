@@ -2436,6 +2436,7 @@ if __name__ == '__main__':
             config_dict['provider'] = {options.tile_server_provider: 1}
             config_dict['overlay'] = {options.tile_server_provider_layer: 1} if options.tile_server_provider_layer else {"": 0}
             config_dict['tile_format'] = {options.tile_format: 1}
+            config_dict['stitched_tile_format'] = {options.stitched_tile_format: 1}
             config_dict['zoom'] = {str(zoom): 1}
             config_dict['longtitude1-west'] = {str(options.long1): 1}
             config_dict['longtitude2-east'] = {str(options.long2): 1}
@@ -2453,7 +2454,7 @@ if __name__ == '__main__':
             config_dict['max_resolution'] = {str(options.max_resolution_px): 1}
 
             # Check if there is an existing config file, and if the necessary config
-            # values do match, warn the user and exit.
+            # values do not match, warn the user and exit.
             zoom_conf, main_config_section = read_zoom_config(zoom, config_dict)
 
             # Write the configuration in a conf file
