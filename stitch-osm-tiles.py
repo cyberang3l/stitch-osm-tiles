@@ -931,7 +931,7 @@ def read_zoom_config(zoom, options):
                                                )
                         else:
                             error_and_exit("Option '{0}' is defined in the current run, but it doesn't exist in the configuration file '{1}'.\n"
-                                           "This option should match since a configuration file exists (indicating that you have"
+                                           "This option should match since a configuration file exists (indicating that you have "
                                            "already ran the script for the specified zoom level in the current project folder)".format(
                                                key,
                                                zoom_conf
