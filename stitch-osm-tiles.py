@@ -1452,8 +1452,9 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                             list_of_missing_files[url] = local_path
 
                 # Erase the contents of the log file at this point.
-                with open(downloadLogFile_path, 'w'):
-                    pass
+                with self._downloadLogFileLock:
+                    with open(downloadLogFile_path, 'w'):
+                        pass
 
                 pbar.maxval = pbar.maxval + len(list_of_missing_files)
                 for url, local_path in list_of_missing_files.iteritems():
