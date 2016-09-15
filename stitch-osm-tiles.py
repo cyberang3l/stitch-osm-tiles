@@ -1443,16 +1443,16 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 retry += 1
                 LOG.warn("Some tiles were not downloaded properly. Retry attempt {}...".format(retry))
                 list_of_missing_files = {}
-                with open(downloadLogFile_path) as f:
-                    q = quick_regexp()
-                    for line in f:
-                        if q.search(".*ERROR:'(.*)' -> '(.*)'$", line):
-                            url = q.groups[0]
-                            local_path = q.groups[1]
-                            list_of_missing_files[url] = local_path
-
-                # Erase the contents of the log file at this point.
                 with self._downloadLogFileLock:
+                    with open(downloadLogFile_path) as f:
+                        q = quick_regexp()
+                        for line in f:
+                            if q.search(".*ERROR:'(.*)' -> '(.*)'$", line):
+                                url = q.groups[0]
+                                local_path = q.groups[1]
+                                list_of_missing_files[url] = local_path
+
+                    # Erase the contents of the log file at this point.
                     with open(downloadLogFile_path, 'w'):
                         pass
 
@@ -1464,7 +1464,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 self._inDownloadQueue.join()
                 self._outDownloadQueue.join()
 
-                filestat = os.stat(downloadLogFile_path)
+                with self._downloadLogFileLock:
+                    filestat = os.stat(downloadLogFile_path)
 
         # Close the log file since we have finished downloading at this point.
         downloadLogFile.close()
