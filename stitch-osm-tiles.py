@@ -1465,6 +1465,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 self._outDownloadQueue.join()
 
                 with self._downloadLogFileLock:
+                    downloadLogFile.flush()
                     filestat = os.stat(downloadLogFile_path)
 
         # Close the log file since we have finished downloading at this point.
