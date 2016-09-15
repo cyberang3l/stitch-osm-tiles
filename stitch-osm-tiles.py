@@ -1337,15 +1337,12 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         self._itemsInProcessing.append(stitch)
 
     #----------------------------------------------------------------------
-    def download_tiles(self, tile_west, tile_east, tile_north, tile_south, list_of_missing_files = {}, download_missing = False):
+    def download_tiles(self, tile_west, tile_east, tile_north, tile_south, retry_failed):
         """
         Download tiles for a given zoom level.
         If the tiles are already downloaded, this function will only check the consistency
         of the downloaded files.
         """
-        if download_missing and len(list_of_missing_files):
-            error_and_exit("The script tried to download missing files, but the list of missing files is empty.")
-
         number_of_horizontal_tiles = (tile_east - tile_west) + 1
         number_of_vertical_tiles = (tile_south - tile_north) + 1
 
@@ -1385,57 +1382,53 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         downloadLogFile = open(downloadLogFile_path, 'w')
         instantiate_threadpool('ProccessDownloaded-Thread', 1, self._process_download_results_worker, (self._outDownloadQueue, pbar, downloadLogFile))
 
-        if download_missing:
-            for url, local_path in list_of_missing_files.iteritems():
-                self._addToDownloadInputQueue((url, local_path))
-        else:
-            # The counter is mostly used to choose different tile servers if more than one tile servers are provided for the specified provider.
-            counter = 1
-            for x in xrange(tile_west, tile_east + 1):
-                x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
-                if not os.path.isdir(x_path):
-                    os.mkdir(x_path)
+        # The counter is mostly used to choose different tile servers if more than one tile servers are provided for the specified provider.
+        counter = 1
+        for x in xrange(tile_west, tile_east + 1):
+            x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
+            if not os.path.isdir(x_path):
+                os.mkdir(x_path)
 
-                for y in xrange(tile_north, tile_south + 1):
-                    url = self.get_tile_url(self.tile_servers[counter % len(self.tile_servers)], str(x), str(y))
+            for y in xrange(tile_north, tile_south + 1):
+                url = self.get_tile_url(self.tile_servers[counter % len(self.tile_servers)], str(x), str(y))
 
-                    y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
+                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
 
-                    LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
+                LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
 
-                    # Before adding files in the queue, check if the file exists
-                    if os.path.isfile(y_path):
-                        try:
-                            img = gmImage(y_path)
-                            # If it is the first image we process, set the self._tile_width and self._tile_height
-                            if counter == 1:
-                                self._tile_width = img.columns()
-                                self._tile_height = img.rows()
+                # Before adding files in the queue, check if the file exists
+                if os.path.isfile(y_path):
+                    try:
+                        img = gmImage(y_path)
+                        # If it is the first image we process, set the self._tile_width and self._tile_height
+                        if counter == 1:
+                            self._tile_width = img.columns()
+                            self._tile_height = img.rows()
 
-                            # If the image is already loaded successfully, but the image size differs from
-                            # self._tile_height/self._tile_width, try to redownload it.
-                            if not (img.columns() == self._tile_width and img.rows() == self._tile_height):
-                                self._addToDownloadInputQueue((url, y_path))
-                            else:
-                                # Update the progress bar
-                                pbar.currval += 1
-                                pbar.update(pbar.currval)
-                        except RuntimeError, e:
-                            # We execute at this point if the image exists but it cannot be loaded succesfully.
-                            # In this case, try to re-download it.
+                        # If the image is already loaded successfully, but the image size differs from
+                        # self._tile_height/self._tile_width, try to redownload it.
+                        if not (img.columns() == self._tile_width and img.rows() == self._tile_height):
                             self._addToDownloadInputQueue((url, y_path))
-                    else:
-                        # Else the file does not exist, try to download it for the first time.
+                        else:
+                            # Update the progress bar
+                            pbar.currval += 1
+                            pbar.update(pbar.currval)
+                    except RuntimeError, e:
+                        # We execute at this point if the image exists but it cannot be loaded succesfully.
+                        # In this case, try to re-download it.
                         self._addToDownloadInputQueue((url, y_path))
+                else:
+                    # Else the file does not exist, try to download it for the first time.
+                    self._addToDownloadInputQueue((url, y_path))
 
-                    # If we are processing the first tile, wait until the processing completes because we have to
-                    # read the width/height of this tile before downloading the rest. The rest of the tiles are
-                    # processed in parallel by multiple threads.
-                    if counter == 1:
-                        while url in self._itemsInProcessing:
-                            time.sleep(0.01)
+                # If we are processing the first tile, wait until the processing completes because we have to
+                # read the width/height of this tile before downloading the rest. The rest of the tiles are
+                # processed in parallel by multiple threads.
+                if counter == 1:
+                    while url in self._itemsInProcessing:
+                        time.sleep(0.01)
 
-                    counter+=1
+                counter+=1
 
         # Wait for the threads to finish their work by joining the in/out Queues
         self._inDownloadQueue.join()
@@ -1443,10 +1436,37 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
         pbar.finish()
 
+        if retry_failed:
+            filestat = os.stat(downloadLogFile_path)
+            retry = 0
+            while filestat.st_size > 0:
+                retry += 1
+                LOG.warn("Some tiles were not downloaded properly. Retry attempt {}...".format(retry))
+                list_of_missing_files = {}
+                with open(downloadLogFile_path) as f:
+                    q = quick_regexp()
+                    for line in f:
+                        if q.search(".*ERROR:'(.*)' -> '(.*)'$", line):
+                            url = q.groups[0]
+                            local_path = q.groups[1]
+                            list_of_missing_files[url] = local_path
+
+                # Erase the contents of the log file at this point.
+                with open(downloadLogFile_path, 'w'):
+                    pass
+
+                pbar.maxval = pbar.maxval + len(list_of_missing_files)
+                for url, local_path in list_of_missing_files.iteritems():
+                    self._addToDownloadInputQueue((url, local_path))
+
+                # Wait for the threads to finish their work by joining the in/out Queues
+                self._inDownloadQueue.join()
+                self._outDownloadQueue.join()
+
+                filestat = os.stat(downloadLogFile_path)
+
         # Close the log file since we have finished downloading at this point.
         downloadLogFile.close()
-
-        return downloadLogFile_path
 
     #----------------------------------------------------------------------
     def _calculate_max_dimensions_per_stitch(self, tile_west, tile_east, tile_north, tile_south):
@@ -2469,25 +2489,7 @@ if __name__ == '__main__':
             write_zoom_config(zoom_conf, config_dict, main_config_section)
 
             if not options.skip_downloading and not options.only_calibrate:
-                download_logfile = tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south)
-                if options.retry_failed:
-                    filestat = os.stat(download_logfile)
-                    retry = 0
-                    while filestat.st_size > 0:
-                        retry += 1
-                        LOG.warn("Some tiles were not downloaded properly. Retry {}...".format(retry))
-                        list_of_missing_files = {}
-                        with open(download_logfile) as f:
-                            q = quick_regexp()
-                            for line in f:
-                                if q.search(".*ERROR:'(.*)' -> '(.*)'$", line):
-                                    url = q.groups[0]
-                                    local_path = q.groups[1]
-                                    list_of_missing_files[url] = local_path
-
-                        download_logfile = tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south, list_of_missing_files, True)
-                        filestat = os.stat(download_logfile)
-
+                download_logfile = tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south, options.retry_failed)
             else:
                 LOG.info("Skipping tile downloading as requested.")
 
