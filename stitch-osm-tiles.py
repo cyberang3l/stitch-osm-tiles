@@ -1437,7 +1437,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         pbar.finish()
 
         if retry_failed:
-            filestat = os.stat(downloadLogFile_path)
+            filestat = os.fstat(downloadLogFile.fileno())
             retry = 0
             while filestat.st_size > 0:
                 retry += 1
@@ -1466,7 +1466,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
                 with self._downloadLogFileLock:
                     downloadLogFile.flush()
-                    filestat = os.stat(downloadLogFile_path)
+                    filestat = os.fstat(downloadLogFile.fileno())
 
         # Close the log file since we have finished downloading at this point.
         downloadLogFile.close()
