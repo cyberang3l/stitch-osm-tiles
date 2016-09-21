@@ -161,7 +161,7 @@ PROVIDERS = OrderedDict([
     ('Statkart', {
         'attribution':'http://www.kartverket.no/kart/gratis-kartdata/wms-tjenester/',
         'url':'http://www.kartverket.no',
-        'tile_servers':['http://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers={layer}&zoom={z}&x={x}&y={y}'],
+        'tile_servers': ['http://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers={layer}&zoom={z}&x={x}&y={y}'],
         'extension': 'png',
         'zoom_levels': '0-17',
         'layers': OrderedDict([
@@ -202,8 +202,12 @@ PROVIDERS = OrderedDict([
 #                'desc': '',
 #                'tile_servers': ['http://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_WGS84/GeocacheBasis/MapServer/tile/{z}/{y}/{x}'],
 #                'extension': 'jpg'
-#            })
-
+#            }),
+            ('ut_topo_light', {
+                'desc': 'DNT Hiking Maps with Contour Lines for Norway',
+                'tile_servers': ['http://dntutnotilesprod.cloudapp.net/tilestache/{layer}/{z}/{x}/{y}.jpg'],
+                'extension': 'jpg'
+            })
         ])
     }),
 
