@@ -205,8 +205,9 @@ PROVIDERS = OrderedDict([
 #            }),
             ('ut_topo_light', {
                 'desc': 'DNT Hiking Maps with Contour Lines for Norway',
-                'tile_servers': ['http://dntutnotilesprod.cloudapp.net/tilestache/{layer}/{z}/{x}/{y}.jpg'],
-                'extension': 'jpg'
+                'tile_servers': ['https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.{ext}'],
+                'extension': 'jpg',
+                'zoom_levels': '5-16'
             })
         ])
     }),
@@ -1231,7 +1232,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 req = urllib2.Request(url)
 
                 try:
-                    resp = urllib2.urlopen(req, timeout = 5)
+                    resp = urllib2.urlopen(req, timeout = 20)
                 except urllib2.HTTPError as e:
                     # e.code contains the actual error code
                     retval = (e, url, download_path, 'HTTPError')
@@ -2614,7 +2615,7 @@ resolution_per_stitch: {}""".format(
                                 config_dict['total_stitched_tiles'].keys().pop(),
                                 config_dict['resolution_per_stitch'].keys().pop()
                             )
-            LOG.info("\n" + properties)
+            LOG.info("\n" + properties + 4*"\n")
 
             # To compose two images (satellite with hybrid on top), use the convert command like this:
             #   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
