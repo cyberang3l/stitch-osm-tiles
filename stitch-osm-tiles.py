@@ -160,7 +160,7 @@ PROVIDERS = OrderedDict([
     #                                 and here: https://www.norgeskart.no
     ('Statkart', {
         'attribution':'http://www.kartverket.no/kart/gratis-kartdata/wms-tjenester/',
-        'url':'http://www.kartverket.no',
+        'url':'http://www.kartverket.no/data/lage-kart-pa-nett/',
         'tile_servers': ['http://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers={layer}&zoom={z}&x={x}&y={y}'],
         'extension': 'png',
         'zoom_levels': '0-17',
@@ -177,11 +177,9 @@ PROVIDERS = OrderedDict([
             ('europa', {
                 'desc': 'Main Roads of Whole Europe'
             }),
-# The following URL Works with WMTS
-#            ('norges_grunnkart', {
-#                'desc': 'High Quality Base Maps of Norway',
-#                'tile_servers': ['https://gatekeeper2.geonorge.no/BaatGatekeeper/gk/gk.cache_wmts?gkt=3D162D6480FF44742FF6C4E8599E43690FC759A18E1D6DF38DF829231A08590ADB1584C7A1E10204A7002ACA2E9D21402F15CFFEDCBD29AA8D018F0853CD0DA1&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=norges_grunnkart&STYLE=default&TILEMATRIXSET=EPSG:32633&TILEMATRIX=EPSG:32633:{z}&TILEROW={y}&TILECOL={x}&FORMAT=image/{ext}']
-#            }),
+            ('norges_grunnkart', {
+                'desc': 'High Quality Base Maps of Norway',
+            }),
             ('norges_grunnkart_graatone', {
                 'desc': 'High Quality Base Maps of Norway in Grayscale'
             }),
@@ -203,6 +201,12 @@ PROVIDERS = OrderedDict([
 #                'tile_servers': ['http://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_WGS84/GeocacheBasis/MapServer/tile/{z}/{y}/{x}'],
 #                'extension': 'jpg'
 #            }),
+            ('egk', {
+                'desc': 'Simple map of Norway'
+            }),
+            ('matrikkel_bakgrunn', {
+                'desc': 'House map of Norway'
+            }),
             ('ut_topo_light', {
                 'desc': 'DNT Hiking Maps with Contour Lines for Norway',
                 'tile_servers': ['https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.{ext}'],
