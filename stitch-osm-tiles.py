@@ -837,7 +837,7 @@ def validate_arguments(options):
                         if not options.tile_server_provider_layer:
                             options.tile_server_provider_layer = PROVIDERS[p]['layers'].keys()[0]
 
-                    # At this point we have alraedy matched the provider, so break the look
+                    # At this point we have already matched the provider, so break the look
                     # (no need to iterate through all of the providers)
                     break
 
