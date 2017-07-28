@@ -843,7 +843,7 @@ def validate_arguments(options):
 
 
             # Check if the chosen provider/layer designates the available zoom_levels.
-            # If the yes, and the user has chosen a non-supported zoom level, exit with an error.
+            # If yes, and the user has chosen a non-supported zoom level, exit with an error.
             if 'zoom_levels' in PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]:
                 accepted_zoom_levels = expand_zoom_levels(PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['zoom_levels'])
             else:
