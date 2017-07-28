@@ -156,6 +156,52 @@ PROVIDERS = OrderedDict([
         ])
     }),
 
+    ('Microsoft', {
+        'attribution':'Bing Maps Platform',
+        'url':'https://www.bing.com/maps',
+        'dyn_tile_url': True, # When 'dyn_tile_url' exists, that's an indication that the 'tile_servers'
+                              # provide a dynGetTileUrl(z, x, y, download_counter) function to find the
+                              # correct URL and not the URL itself!
+                              # That means that the tile_servers must be exec'ed and the function
+                              # dynGetTileUrl has to be called in order to get the correct URL.
+        'tile_servers': ["""
+def eqt(z, x, y):
+    NUM_CHAR = [ '0', '1', '2', '3' ]
+    tn = list(" " * z)
+
+    for i in range(z - 1, -1, -1):
+        num = (x % 2) | ((y % 2) << 1)
+        tn[i] = NUM_CHAR[num]
+        x >>= 1
+        y >>= 1
+
+    return "".join(tn)
+
+def dynGetTileUrl(z, x, y, download_counter):
+    alts = [0, 1, 2, 3]
+    alt = download_counter % len(alts)
+    return "http://{layer}{}.ortho.tiles.virtualearth.net/tiles/{layer}{}.{ext}?g=45".format(alt, eqt(z, x, y))
+        """],
+        'extension': 'png',
+        'zoom_levels': '1-19',
+        'layers': OrderedDict([
+            ('maps', {
+                'name': 'r',
+                'desc': 'Bing Maps'
+            }),
+            ('hybrid', {
+                'name': 'h',
+                'desc': 'Bing Maps Hybrid',
+                'extension': 'jpg'
+            }),
+            ('aerial', {
+                'name': 'a',
+                'desc': 'Bing Maps Earth',
+                'extension': 'jpg'
+            })
+        ])
+    }),
+
     # For more maps of Norway take a look here: https://kartkatalog.geonorge.no
     #                                 and here: https://www.norgeskart.no
     ('Statkart', {
@@ -900,6 +946,19 @@ def validate_arguments(options):
             else:
                 options.tile_servers.append(server_string)
 
+        # If the URL must be calculated dynamically, the option 'dyn_tile_url' will be either set to be True
+        # on the provider level or the layer level. If that's the case, exec(options.tile_servers[0]) to get
+        # access to the provided dynGetTileUrl(z, x, y, download_counter) function and set the options.dyn_tile_url
+        # to be True.
+        options.dyn_tile_url = False
+        if 'dyn_tile_url' in PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]:
+            if PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['dyn_tile_url']:
+                options.dyn_tile_url = True
+        elif 'dyn_tile_url' in PROVIDERS[options.tile_server_provider]:
+            if PROVIDERS[options.tile_server_provider]['dyn_tile_url']:
+                options.dyn_tile_url = True
+
+
 #----------------------------------------------------------------------
 def read_zoom_config(zoom, options):
     """
@@ -988,13 +1047,7 @@ class stitch_osm_tiles(object):
     #----------------------------------------------------------------------
     def __init__(self,
                  zoom,
-                 saved_tile_format,
-                 saved_stitched_tile_format,
-                 tile_servers = None,
-                 project_folder = 'maps_project',
-                 max_dimensions = 10000,
-                 parallelDownloadThreads = 10,
-                 parallelStitchingThreads = get_physical_cores()):
+                 options):
         """
         zoom: The zoom level where the class will be working with for downloading and stitching.
         saved_tile_format: Different providers provide different tile formats. Mapquest for example, provides
@@ -1024,15 +1077,16 @@ class stitch_osm_tiles(object):
         self.zoom = zoom
         # A dictionary of the provider with layer specific information as created by the
         # create_provider_dict function.
-        self.tile_servers = tile_servers
+        self.tile_servers = options.tile_servers or None
         # the _tile_height and _tile_height will be calculated when the first tile is downloaded.
-        self.max_dimensions = max_dimensions # Default 10000 pixels
+        self.max_dimensions = options.max_resolution_px or 10000 # Default 10000 pixels
         # The project name (equals to the project folder)
-        self.project_folder = project_folder
-        self.saved_tile_format = saved_tile_format
-        self.saved_stitched_tile_format = saved_stitched_tile_format
-        self.parallelDownloadThreads = parallelDownloadThreads
-        self.parallelStitchingThreads = parallelStitchingThreads
+        self.project_folder = options.project_folder or 'maps_project'
+        self.saved_tile_format = options.tile_format
+        self.saved_stitched_tile_format = options.stitched_tile_format
+        self.parallelDownloadThreads = options.download_threads or 10
+        self.parallelStitchingThreads = options.stitching_threads or get_physical_cores()
+        self.dyn_tile_url = options.dyn_tile_url or False
         self._tile_height = None
         self._tile_width = None
         self._itemsInProcessing = []
@@ -1042,13 +1096,18 @@ class stitch_osm_tiles(object):
         self._downloadLogFileLock = threading.Lock()
 
     #----------------------------------------------------------------------
-    def get_tile_url(self, tile_server, x, y):
+    def get_tile_url(self, counter, x, y):
         """
         Return the tile url by replacing the placeholders
         """
-        url = re.sub('\{x\}', x, tile_server)
-        url = re.sub('\{y\}', y, url)
-        url = re.sub('\{z\}', str(self.zoom), url)
+        if self.dyn_tile_url:
+            exec(self.tile_servers[0], locals(), locals())
+            url = dynGetTileUrl(self.zoom, x, y, counter)
+        else:
+            tile_server = self.tile_servers[counter % len(self.tile_servers)]
+            url = re.sub('\{x\}', str(x), tile_server)
+            url = re.sub('\{y\}', str(y), url)
+            url = re.sub('\{z\}', str(self.zoom), url)
 
         return url
 
@@ -1399,11 +1458,11 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 os.mkdir(x_path)
 
             for y in xrange(tile_north, tile_south + 1):
-                url = self.get_tile_url(self.tile_servers[counter % len(self.tile_servers)], str(x), str(y))
-
                 y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
 
                 LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
+
+                url = self.get_tile_url(counter, x, y)
 
                 # Before adding files in the queue, check if the file exists
                 if os.path.isfile(y_path):
@@ -2443,14 +2502,7 @@ if __name__ == '__main__':
                 os.mkdir(zoom_folder)
 
             tileWorker = stitch_osm_tiles(zoom = zoom,
-                                          saved_tile_format = options.tile_format,
-                                          saved_stitched_tile_format = options.stitched_tile_format,
-                                          tile_servers = options.tile_servers,
-                                          project_folder = options.project_folder,
-                                          max_dimensions = options.max_resolution_px,
-                                          parallelDownloadThreads = options.download_threads,
-                                          parallelStitchingThreads = options.stitching_threads
-                                          )
+                                          options = options)
 
             tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
             tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
