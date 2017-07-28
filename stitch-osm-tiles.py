@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 #
-# Copyright (C) 2016 Vangelis Tasoulas <vangelis@tasoulas.net>
+# Copyright (C) 2017 Vangelis Tasoulas <vangelis@tasoulas.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
