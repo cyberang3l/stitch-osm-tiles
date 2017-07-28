@@ -35,6 +35,8 @@ import threading
 import time
 import ConfigParser
 import pgmagick
+import errno
+import httplib
 from pgmagick import Image as gmImage
 from collections import OrderedDict
 
@@ -104,58 +106,6 @@ PROVIDERS = OrderedDict([
         ])
     }),
 
-    ('Mapbox', {
-        'attribution':'Mapbox, OpenStreeMap',
-        'url':'https://www.mapbox.com',
-        'tile_servers': [ 'http://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoidGF0aWFuYSIsImEiOiJjaWs1bzRiZGQwMDdjcHRrc285bTdwcWU5In0.0EWPVHyjaE9jTzNvOiIO-w' ],
-        'extension': 'png',
-        'zoom_levels': '0-18',
-        'layers': OrderedDict([
-            ('mapbox.outdoors', {
-                'desc': "Sample: http://api.mapbox.com/v4/mapbox.outdoors.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627"
-            }),
-            ('mapbox.run-bike-hike', {
-                'desc': "Sample: http://api.mapbox.com/v4/mapbox.run-bike-hike.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627"
-            }),
-            ('mapbox.streets', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.streets.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.streets-basic', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.streets-basic.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.emerald', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.emerald.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.dark', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.dark.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.light', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.light.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.high-contrast', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.high-contrast.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.satellite', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.satellite.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-#            ('mapbox.streets-satellite', {
-#                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.streets-satellite.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-#            }),
-            ('mapbox.wheatpaste', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.wheatpaste.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.comic', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.comic.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.pirates', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.pirates.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            }),
-            ('mapbox.pencil', {
-                'desc': 'Sample: http://api.mapbox.com/v4/mapbox.pencil.html?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpbTgzcHQxMzAxMHp0eWx4bWQ1ZHN2NGcifQ.WVwjmljKYqKciEZIC3NfLA#14/37.9870/23.6627'
-            })
-        ])
-    }),
-
     ('Microsoft', {
         'attribution':'Bing Maps Platform',
         'url':'https://www.bing.com/maps',
@@ -198,6 +148,29 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'name': 'a',
                 'desc': 'Bing Maps Earth',
                 'extension': 'jpg'
+            })
+        ])
+    }),
+
+    ('Eniro', {
+        'attribution':'Eniro',
+        'url':'http://map.eniro.com',
+        'dyn_tile_url': True,
+        'tile_servers':["""
+def dynGetTileUrl(z, x, y, download_counter):
+    return "https://map.eniro.com/geowebcache/service/tms1.0.0/{layer}/{}/{}/{}.{ext}".format(z, x, ((1 << z) - 1 - y))
+        """],
+        'extension':'png',
+        'zoom_levels':'2-20',
+        'layers': OrderedDict([
+            ('map', {
+                'desc': 'Eniro Map (NO,SE,FI,DK,PL)'
+            }),
+            ('aerial', {
+                'desc': 'Eniro Aerial (NO,SE,DK)'
+            }),
+            ('nautical', {
+                'desc': 'Eniro Nautical (NO,SE)'
             })
         ])
     }),
@@ -258,6 +231,37 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'tile_servers': ['https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.{ext}'],
                 'extension': 'jpg',
                 'zoom_levels': '5-16'
+            })
+        ])
+    }),
+
+    # In Nokia maps you can change the ppi=72 to 72, 250, 320 and 500
+    # And the value "512" is the width/height of each tile and you can change it to either 128, 256 or 512
+    ('Nokia', {
+        'attribution':'Nokia maps',
+        'url':'https://wego.here.com',
+        'tile_servers': ['https://{alts:1,2,3,4}.base.maps.api.here.com/maptile/2.1/maptile/afd6f70912/{layer}/{z}/{x}/{y}/256/png8?app_id=xWVIueSv6JL0aJ5xqTxb&app_code=djPZyynKsbTjIUDOBcHZ2g&lg=eng&ppi=250'],
+        'extension': 'png',
+        'zoom_levels': '2-18',
+        'layers': OrderedDict([
+            ('classic-256', {
+                'name': 'normal.day',
+                'desc': 'Classic map 256x256 pixels per tile'
+            }),
+            ('classic-512', {
+                'name': 'normal.day',
+                'tile_servers': ['https://{alts:1,2,3,4}.base.maps.api.here.com/maptile/2.1/maptile/afd6f70912/{layer}/{z}/{x}/{y}/512/png8?app_id=xWVIueSv6JL0aJ5xqTxb&app_code=djPZyynKsbTjIUDOBcHZ2g&lg=eng&ppi=250'],
+                'desc': 'Classic map 512x512 pixels per tile (same number of tiles per zoom level with classic-256, but higher resolution)'
+            }),
+            ('aerialhybrid-256', {
+                'name': 'hybrid.day',
+                'tile_servers': ['https://{alts:1,2,3,4}.aerial.maps.api.here.com/maptile/2.1/maptile/afd6f70912/{layer}/{z}/{x}/{y}/256/png8?app_id=xWVIueSv6JL0aJ5xqTxb&app_code=djPZyynKsbTjIUDOBcHZ2g&lg=eng&ppi=250'],
+                'desc': 'Aerial map 256x256 pixels per tile'
+            }),
+            ('aerialhybrid-512', {
+                'name': 'hybrid.day',
+                'tile_servers': ['https://{alts:1,2,3,4}.aerial.maps.api.here.com/maptile/2.1/maptile/afd6f70912/{layer}/{z}/{x}/{y}/512/png8?app_id=xWVIueSv6JL0aJ5xqTxb&app_code=djPZyynKsbTjIUDOBcHZ2g&lg=eng&ppi=250'],
+                'desc': 'Aerial map 512x512 pixels per tile (same number of tiles per zoom level with aerialhybrid-256, but higher resolution)'
             })
         ])
     }),
@@ -1303,6 +1307,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     retval = (e, url, download_path, 'URLError')
                 except socket.timeout as e:
                     retval = (e, url, download_path, 'SocketTimeout')
+                except socket.error as e:
+                    retval = (e, url, download_path, e.strerror)
+                except httplib.BadStatusLine as e:
+                    retval = (e, url, download_path, e.strerror)
                 else:
                     try:
                         tile = resp.read()
