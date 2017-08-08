@@ -731,7 +731,7 @@ def _command_Line_Options():
                         dest="skip_downloading",
                         help="Skip downloading of the original tiles. Use this option ONLY if you are sure that"
                         " all of the original tiles for the given coordinates have been downloaded successfully."
-                        "The downloading function is also checking the integrity of the files, so it"
+                        " The downloading function is also checking the integrity of the files, so it"
                         " is always a good idea to NOT skip the downloading. Keep in mind that the"
                         " downloading function will not re-download already downloaded (cached) tiles,"
                         " so you can always resume downloads.")
@@ -747,6 +747,17 @@ def _command_Line_Options():
                         action="store_true",
                         dest="printout",
                         help="Generates paper friendly maps with a grid and a scale indicator.")
+    parser.add_argument("--prepare-tiles-for-software",
+                        action="store",
+                        dest="prep_for_soft",
+                        choices=["maverick", "osmamd"],
+                        default="maverick",
+                        metavar="SOFTWARE",
+                        help="R|Prepare tiles in a format that is accepted by different\n"
+                        "software for offline usage.\n"
+                        "  Available choices:\n"
+                        "     'maverick' <- default \n"
+                        "     'osmand'")
     parser.add_argument("--download-threads",
                         action="store",
                         type=int,
