@@ -2498,6 +2498,35 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
     canvas.write(outputFile)
 
 #----------------------------------------------------------------------
+def prepareMaverickTiles():
+    """
+    Generates .tile tiles for Maverick
+
+    Maverick can read either jpg or png tiles, so just
+    use the already downloaded format. Also create the appropriate
+
+    Also generate a 'mapserver.txt' file that maverick is using to download
+    missing tiles if there is an available internect connection.
+
+    The format of the 'mapserver.txt' is:
+    http://url.com/{z}/{x}/{y}|<ext>|<max_zoom>|<min_zoom>
+
+    For example:
+    https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.jpg|jpg|16|1
+    """
+    pass
+
+#----------------------------------------------------------------------
+def prepareOsmandTiles():
+    """
+    Generates .tile tiles for OsmAnd
+
+    OsmAnd is only reading png files, so the files will need to
+    be converted to png if not already in that format.
+    """
+    pass
+
+#----------------------------------------------------------------------
 if __name__ == '__main__':
     """
     Write the main program here
