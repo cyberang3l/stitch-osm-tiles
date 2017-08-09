@@ -18,6 +18,7 @@
 
 # apt-get install python-progressbar python-pgmagick python-wand
 
+from __future__ import print_function
 import os
 import sys
 import re
@@ -1996,7 +1997,7 @@ def DrawableMapNorth(x, y, size = 100, anchor = 'lowerleft'):
     """
     anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
-        print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
+        print("Wrong Anchor value. Available values are:\n{}".format(anchor_vals))
         raise KeyError
 
     north = pgmagick.DrawableList()
@@ -2080,7 +2081,7 @@ def DrawableMapCompass(x, y, radius = 100, anchor = 'lowerleft'):
     """
     anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
-        print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
+        print("Wrong Anchor value. Available values are:\n{}".format(anchor_vals))
         raise KeyError
 
     compass = pgmagick.DrawableList()
@@ -2318,7 +2319,7 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize = 16, anchor 
     """
     anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
-        print "Wrong Anchor value. Available values are:\n{}".format(anchor_vals)
+        print("Wrong Anchor value. Available values are:\n{}".format(anchor_vals))
         raise KeyError
 
     horizontalMetersPerPixel = 40075017 * math.cos(latitude_mid_of_tile / 180.0 * math.pi) / 2**(zoom+8)
