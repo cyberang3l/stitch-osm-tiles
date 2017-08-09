@@ -49,8 +49,9 @@ __all__ = [
 ]
 
 # TODO: 1. Add -l -r -t -b for left, right, top, bottom tiles to be downloaded (if the user doesn't want to provide the coordinates)
-#       2. Convert the stitch_osm_tiles into a package
-#       3. Add the Drawable functions and prepaerStitchForPrint, prepaerMaverickTiles and prepareOsmandTiles in the stitch_osm_tiles class
+#       2. Cleanup the code and convert the stitch_osm_tiles into a package.
+#       3. Add the Drawable*, prepareStitchForPrint, prepareMaverickTiles and prepareOsmandTiles functions in the stitch_osm_tiles class
+#       4. Port to python3
 
 __version__ = '1.0.0'
 __author__ = 'Vangelis Tasoulas (vangelis@tasoulas.net)'
