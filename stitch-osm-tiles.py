@@ -1062,16 +1062,18 @@ class stitch_osm_tiles(object):
     #----------------------------------------------------------------------
     def __init__(self,
                  zoom,
-                 options):
+                 project_folder = 'maps_project',
+                 tile_servers = None,
+                 dyn_tile_url = False,
+                 saved_tile_format = 'png',
+                 saved_stitched_tile_format = 'png',
+                 max_stitch_dimensions = 10000,
+                 parallelDownloadThreads = 10,
+                 parallelStitchingThreads = 1):
         """
         zoom: The zoom level where the class will be working with for downloading and stitching.
-        saved_tile_format: Different providers provide different tile formats. Mapquest for example, provides
-                           jpg, while openstreetmap provides png tiles. The saved_tile_format defines the format
-                           that the tiles will be saved locally. This might be needed for different reasons.
-                           For example, OziExplorer can read only PNG files from its local cache. In this case,
-                           if you download tiles from MapQuest, you cannot use them if you do not convert them
-                           to png format. If you set 'saved_tile_format' to png, then the tiles although they are
-                           downloaded in jpg, they will be converted and saved in a png format.
+        project_folder: Project folder defines where the tiles will be downloaded and where the stitches will
+                        be saved.
         tile_servers: A list with all of the available tile servers that can be used for tile downloading.
                       e.g:
                          [
@@ -1085,23 +1087,43 @@ class stitch_osm_tiles(object):
 
                          If tile_servers == None, no downloading of tiles can be performed, but tiles can
                          still be stitched or calibrated.
-        project_folder: Project folder defines where the tiles will be downloaded and where the stitches will
-                        be saved.
+        dyn_tile_url: When dyn_tile_url is set to True, that's an indication that the 'tile_servers' provide
+                      a dynGetTileUrl(z, x, y, download_counter) function to find the correct URL and not the
+                      URL itself!
+                      That means that the tile_servers must contain a valid python code with the dynGetTileUrl
+                      function being present. Consequently, the tile_servers must be "exec'ed" and the function
+                      dynGetTileUrl is later called in order to get the correct URL.
+
+                      A valid dynamic tile_servers string in the PROVIDERS looks like this:
+                      'tile_servers':["
+                      def dynGetTileUrl(z, x, y, download_counter):
+                          return "https://map.eniro.com/geowebcache/service/tms1.0.0/{layer}/{}/{}/{}.{ext}".format(z, x, ((1 << z) - 1 - y))"]
+
+        saved_tile_format: Different providers provide different tile formats. Mapquest for example, provides
+                           jpg, while openstreetmap provides png tiles. The saved_tile_format defines the format
+                           that the tiles will be saved locally. This might be needed for different reasons.
+                           For example, OziExplorer can read only PNG files from its local cache. In this case,
+                           if you download tiles from MapQuest, you cannot use them if you do not convert them
+                           to png format. If you set 'saved_tile_format' to png, then the tiles although they are
+                           downloaded in jpg, they will be converted and saved in a png format.
+        saved_stitched_tile_format: The file format that the stitched maps will be saved to.
+        max_stitch_dimensions: The maximum accepted dimensions (in pixels) that the stitched files are
+                               allowed to have.
+        parallelDownloadThread: How many parallel thread to use when downloading tiles.
+        parallelStitchingThreads: How many stitching threads to use when stitching tiles. You would probably want
+                                  to set this to the number of CPU cores you have available.
         """
-        # The zoom level where the current tile worker will be working on.
         self.zoom = zoom
-        # A dictionary of the provider with layer specific information as created by the
-        # create_provider_dict function.
-        self.tile_servers = options.tile_servers or None
+        self.project_folder = project_folder
+        self.tile_servers = tile_servers
+        self.dyn_tile_url = dyn_tile_url
+        self.saved_tile_format = saved_tile_format
+        self.saved_stitched_tile_format = saved_stitched_tile_format
+        self.max_stitch_dimensions = max_stitch_dimensions
+        self.parallelDownloadThreads = parallelDownloadThreads
+        self.parallelStitchingThreads = parallelStitchingThreads
+
         # the _tile_height and _tile_height will be calculated when the first tile is downloaded.
-        self.max_dimensions = options.max_resolution_px or 10000 # Default 10000 pixels
-        # The project name (equals to the project folder)
-        self.project_folder = options.project_folder or 'maps_project'
-        self.saved_tile_format = options.tile_format
-        self.saved_stitched_tile_format = options.stitched_tile_format
-        self.parallelDownloadThreads = options.download_threads or 10
-        self.parallelStitchingThreads = options.stitching_threads or get_physical_cores()
-        self.dyn_tile_url = options.dyn_tile_url or False
         self._tile_height = None
         self._tile_width = None
         self._itemsInProcessing = []
@@ -1430,6 +1452,9 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         If the tiles are already downloaded, this function will only check the consistency
         of the downloaded files.
         """
+        if self.tile_servers is None:
+            raise AssertionError("tile_servers haven't been provided. Cannot download tiles.")
+
         number_of_horizontal_tiles = (tile_east - tile_west) + 1
         number_of_vertical_tiles = (tile_south - tile_north) + 1
 
@@ -1588,12 +1613,12 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         vertical_divide_by = 1
         horizontal_divide_by = 1
 
-        while vertical_resolution_per_stitch > self.max_dimensions:
+        while vertical_resolution_per_stitch > self.max_stitch_dimensions:
             # If we have an accurate division without any remainder,
             if total_vertical_resolution % vertical_divide_by == 0:
                 # If the accurately divided number does not result in a resolution less than
-                # self.max_dimensions, increase the divisor and try again.
-                if total_vertical_resolution / vertical_divide_by > self.max_dimensions:
+                # self.max_stitch_dimensions, increase the divisor and try again.
+                if total_vertical_resolution / vertical_divide_by > self.max_stitch_dimensions:
                     vertical_divide_by+=1
                 else:
                     # Otherwise use this value for the vertical resolution
@@ -1604,9 +1629,9 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 vertical_divide_by+=1
 
         # Same story as the previous while-loop, but do it for the horizontal resolution.
-        while horizontal_resolution_per_stitch > self.max_dimensions:
+        while horizontal_resolution_per_stitch > self.max_stitch_dimensions:
             if(total_horizontal_resolution % horizontal_divide_by == 0):
-                if total_horizontal_resolution / horizontal_divide_by > self.max_dimensions:
+                if total_horizontal_resolution / horizontal_divide_by > self.max_stitch_dimensions:
                     horizontal_divide_by+=1
                 else:
                     horizontal_resolution_per_stitch = total_horizontal_resolution / horizontal_divide_by
@@ -2550,7 +2575,14 @@ if __name__ == '__main__':
                 os.mkdir(zoom_folder)
 
             tileWorker = stitch_osm_tiles(zoom = zoom,
-                                          options = options)
+                                          project_folder = options.project_folder,
+                                          tile_servers = options.tile_servers,
+                                          dyn_tile_url = options.dyn_tile_url,
+                                          saved_tile_format = options.tile_format,
+                                          saved_stitched_tile_format = options.stitched_tile_format,
+                                          max_stitch_dimensions = options.max_resolution_px,
+                                          parallelDownloadThreads = options.download_threads,
+                                          parallelStitchingThreads = options.stitching_threads)
 
             tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
             tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
