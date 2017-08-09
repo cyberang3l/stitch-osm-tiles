@@ -48,11 +48,12 @@ __all__ = [
     'get_physical_cores'
 ]
 
-# TODO: Add -l -r -t -b for left, right, top, bottom tiles to be downloaded (if the user doesn't want to provide the coordinates)
+# TODO: 1. Add -l -r -t -b for left, right, top, bottom tiles to be downloaded (if the user doesn't want to provide the coordinates)
+#       2. Convert the stitch_osm_tiles into a package
+#       3. Add the Drawable functions and prepaerStitchForPrint, prepaerMaverickTiles and prepareOsmandTiles in the stitch_osm_tiles class
 
-PROGRAM_NAME = 'stitch-osm-tiles'
-VERSION = '1.0.0'
-AUTHOR = 'Vangelis Tasoulas'
+__version__ = '1.0.0'
+__author__ = 'Vangelis Tasoulas (vangelis@tasoulas.net)'
 
 LOG = logging.getLogger('default.' + __name__)
 
@@ -621,10 +622,10 @@ def _command_Line_Options():
     argument parsing examples
     http://docs.python.org/2/library/argparse.html
     """
-    parser = argparse.ArgumentParser(description=PROGRAM_NAME + " version " + VERSION, formatter_class=SmartFormatter)
+    parser = argparse.ArgumentParser(description='OSM Tile Stitcher' + " version " + __version__, formatter_class=SmartFormatter)
     parser.add_argument("-v", "--version",
                         action="version", default=argparse.SUPPRESS,
-                        version=VERSION,
+                        version=__version__,
                         help="show program's version number and exit")
 
     loggingGroupOpts = parser.add_argument_group('Logging Options', 'List of optional logging options')
@@ -2564,7 +2565,7 @@ if __name__ == '__main__':
     # Validate the command line arguments
     validate_arguments(options)
 
-    LOG.info("Welcome to " + PROGRAM_NAME + " v" + str(VERSION))
+    LOG.info("Welcome to OSM Tile Stitcher v" + str(__version__))
     LOG.info("----------------------------------\n")
 
     #print options
