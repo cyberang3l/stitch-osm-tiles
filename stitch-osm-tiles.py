@@ -1352,7 +1352,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                             img = gmImage(pgmagick.Blob(tile))
                             img.write(download_path)
                             retval = ([img, tile], url, download_path, None)
-                        except RuntimeError, e:
+                        except RuntimeError:
                             e = sys.exc_info()[0]
                             retval = (e, url, download_path, 'UnknownGraphicsMagicError')
                     except socket.error as e:
@@ -1526,7 +1526,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                             # Update the progress bar
                             pbar.currval += 1
                             pbar.update(pbar.currval)
-                    except RuntimeError, e:
+                    except RuntimeError:
                         # We execute at this point if the image exists but it cannot be loaded succesfully.
                         # In this case, try to re-download it.
                         self._addToDownloadInputQueue((url, y_path))
@@ -1600,7 +1600,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 img = gmImage(first_y_tile_path)
                 self._tile_height = img.rows()
                 self._tile_width = img.columns()
-            except RuntimeError, e:
+            except RuntimeError as e:
                 LOG.critical(e.message)
                 exit(1)
 
@@ -1836,7 +1836,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                             self._stitch_thumbnail(img, path_to_thumb)
                         pbar.currval += 1
                         pbar.update(pbar.currval)
-                except RuntimeError, e:
+                except RuntimeError:
                     self._addToStitchingInputQueue((files_stitch,
                                                     path_to_stitch,
                                                     path_to_thumb,
