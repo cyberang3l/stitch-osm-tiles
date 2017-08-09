@@ -2587,6 +2587,14 @@ if __name__ == '__main__':
                                           parallelDownloadThreads = options.download_threads,
                                           parallelStitchingThreads = options.stitching_threads)
 
+            # TODO: All the stitch_osm_tiles class functions should operate on the same tiles as they
+            #       operate on the same zoom level. This means that functions such as the stitch_tiles
+            #       or calibrate_tiles should not need to accept any arguments. A function should be
+            #       introduced that would initialize some self._tile_west, self._tile_north etc variables
+            #       into the tiles that should be used by the class functions. The initialization
+            #       function (or it can be two different functions) should be working either with coords
+            #       (and the coords can be converted to tile number with the deg2tilenums) or by directly
+            #       choosing the w, n, e, s tile numbers.
             tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
             tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
 
