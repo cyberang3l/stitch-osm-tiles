@@ -21,6 +21,7 @@
 from __future__ import print_function
 import os
 import sys
+import shutil
 import re
 import argparse
 import logging
@@ -233,7 +234,7 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'desc': 'DNT Hiking Maps with Contour Lines for Norway',
                 'tile_servers': ['https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.{ext}'],
                 'extension': 'jpg',
-                'zoom_levels': '5-16'
+                'zoom_levels': '0-16'
             })
         ])
     }),
@@ -753,7 +754,7 @@ def _command_Line_Options():
     parser.add_argument("--prepare-tiles-for-software",
                         action="store",
                         dest="prep_for_soft",
-                        choices=["maverick", "osmamd"],
+                        choices=["maverick", "osmand"],
                         default=None,
                         metavar="SOFTWARE",
                         help="R|Prepare tiles in a format that is accepted by different\n"
@@ -1962,6 +1963,72 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
         pbar.finish()
 
+    #----------------------------------------------------------------------
+    def prepareMaverickTiles(self, tile_west, tile_east, tile_north, tile_south):
+        """
+        Generates .tile tiles for Maverick
+
+        Maverick can read either jpg or png tiles, so just
+        use the already downloaded format. Also create the appropriate
+
+        Also generate a 'mapserver.txt' file that maverick is using to download
+        missing tiles if there is an available internect connection.
+
+        The format of the 'mapserver.txt' is:
+        http://url.com/{z}/{x}/{y}|<ext>|<max_zoom>|<min_zoom>
+
+        For example:
+        https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.jpg|jpg|16|1
+        """
+        maverick_folder = os.path.join(self.project_folder, 'maverick')
+
+        if self.dyn_tile_url:
+            LOG.warn("Offline tiles will be generated, but dynamic URLs are not supported by Maverick\n"
+                     "so you will not be able to download missing files from within the program.")
+        else:
+            if self.tile_servers is None:
+                LOG.warn("No tile servers have been provided. Offline tiles will be generated for Maverick\n"
+                         "but you will not be able to download missing files from within the program.")
+            else:
+                # TODO: The user should be giving the original extension of the tile server, the min and max
+                #       zooms as optional arguments to the stitch_osm_tiles class. If we want to create proper
+                #       maverick files, we need that information. For the moment, I use the saved_tile_format
+                #       and a fixed 18|1 value for the supported zoom level WHICH IS WRONG!
+                if not os.path.isdir(maverick_folder):
+                    os.makedirs(maverick_folder)
+                with open(os.path.join(maverick_folder, 'mapserver.txt'), 'w') as mapserverFile:
+                    mapserverFile.write("{}|{}|18|1\n".format(self.tile_servers[0], self.saved_tile_format))
+
+        for x in xrange(tile_west, tile_east + 1):
+            x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
+            if not os.path.isdir(x_path):
+                os.mkdir(x_path)
+
+            x_path_maverick = os.path.join(maverick_folder, str(self.zoom), str(x))
+            if not os.path.isdir(x_path_maverick):
+                os.makedirs(x_path_maverick)
+
+            for y in xrange(tile_north, tile_south + 1):
+                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
+                y_path_maverick = '{}.{}.tile'.format(os.path.join(x_path_maverick, str(y)), self.saved_tile_format)
+
+                if not os.path.isfile(y_path):
+                    LOG.warn("File {} is missing. Maverick tile for this file will not be generated.".format(y_path))
+                else:
+                    shutil.copy2(y_path, y_path_maverick)
+
+
+
+    #----------------------------------------------------------------------
+    def prepareOsmandTiles(self, tile_west, tile_east, tile_north, tile_south):
+        """
+        Generates .tile tiles for OsmAnd
+
+        OsmAnd is only reading png files, so the files will need to
+        be converted to png if not already in that format.
+        """
+        pass
+
 #----------------------------------------------------------------------
 def DrawableMapNorth(x, y, size = 100, anchor = 'lowerleft'):
     """
@@ -2526,35 +2593,6 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
     canvas.write(outputFile)
 
 #----------------------------------------------------------------------
-def prepareMaverickTiles():
-    """
-    Generates .tile tiles for Maverick
-
-    Maverick can read either jpg or png tiles, so just
-    use the already downloaded format. Also create the appropriate
-
-    Also generate a 'mapserver.txt' file that maverick is using to download
-    missing tiles if there is an available internect connection.
-
-    The format of the 'mapserver.txt' is:
-    http://url.com/{z}/{x}/{y}|<ext>|<max_zoom>|<min_zoom>
-
-    For example:
-    https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.jpg|jpg|16|1
-    """
-    pass
-
-#----------------------------------------------------------------------
-def prepareOsmandTiles():
-    """
-    Generates .tile tiles for OsmAnd
-
-    OsmAnd is only reading png files, so the files will need to
-    be converted to png if not already in that format.
-    """
-    pass
-
-#----------------------------------------------------------------------
 if __name__ == '__main__':
     """
     Write the main program here
@@ -2721,7 +2759,10 @@ if __name__ == '__main__':
 
             if options.prep_for_soft:
                 # Process the tile for the necessary software.
-                pass
+                if options.prep_for_soft == 'maverick':
+                    tileWorker.prepareMaverickTiles(tile_west, tile_east, tile_north, tile_south)
+                elif options.prep_for_soft == 'osmand':
+                    tileWorker.prepareOsmandTiles(tile_west, tile_east, tile_north, tile_south)
 
 
             properties = """Provider: {}
