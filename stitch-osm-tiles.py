@@ -2026,10 +2026,31 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         """
         Generates .tile tiles for OsmAnd
 
-        OsmAnd is only reading png files, so the files will need to
-        be converted to png if not already in that format.
+        OsmAnd looks like it likes the png.tile extension even if the file format is jpg.
+        In order to load the offline tiles in OsmAnd you have to enable the "Online maps" plugin
+        and add a new map.
         """
-        pass
+        osmand_folder = os.path.join(self.project_folder, 'osmand')
+
+        for x in xrange(tile_west, tile_east + 1):
+            x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
+            if not os.path.isdir(x_path):
+                os.mkdir(x_path)
+
+            x_path_osmand = os.path.join(osmand_folder, str(self.zoom), str(x))
+            if not os.path.isdir(x_path_osmand):
+                os.makedirs(x_path_osmand)
+
+            for y in xrange(tile_north, tile_south + 1):
+                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
+                y_path_osmand = '{}png.tile'.format(os.path.join(x_path_osmand, str(y)), self.saved_tile_format)
+
+                if not os.path.isfile(y_path):
+                    LOG.warn("File {} is missing. OsmAnd tile for this file will not be generated.".format(y_path))
+                else:
+                    # Only copy the file if it doesn't exist already.
+                    if not os.path.isfile(y_path_osmand):
+                        shutil.copy2(y_path, y_path_osmand)
 
 #----------------------------------------------------------------------
 def DrawableMapNorth(x, y, size = 100, anchor = 'lowerleft'):
