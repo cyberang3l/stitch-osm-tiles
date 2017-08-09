@@ -751,12 +751,12 @@ def _command_Line_Options():
                         action="store",
                         dest="prep_for_soft",
                         choices=["maverick", "osmamd"],
-                        default="maverick",
+                        default=None,
                         metavar="SOFTWARE",
                         help="R|Prepare tiles in a format that is accepted by different\n"
                         "software for offline usage.\n"
                         "  Available choices:\n"
-                        "     'maverick' <- default \n"
+                        "     'maverick'\n"
                         "     'osmand'")
     parser.add_argument("--download-threads",
                         action="store",
@@ -1111,7 +1111,7 @@ class stitch_osm_tiles(object):
         self._downloadLogFileLock = threading.Lock()
 
     #----------------------------------------------------------------------
-    def get_tile_url(self, counter, x, y):
+    def _get_tile_url(self, counter, x, y):
         """
         Return the tile url by replacing the placeholders
         """
@@ -1481,7 +1481,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
                 LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
 
-                url = self.get_tile_url(counter, x, y)
+                url = self._get_tile_url(counter, x, y)
 
                 # Before adding files in the queue, check if the file exists
                 if os.path.isfile(y_path):
@@ -2562,7 +2562,7 @@ if __name__ == '__main__':
             # Prepare the configuration dictionary
             # The configuration dictionary a two levels nested dictionary. The top level key
             # is the config option, each top level key has dictionary value. The key of the dictionary value
-            # is the actualy configuration value, and the value of the value is a number 0 or 1.
+            # is the actual configuration value, and the value of the value is the number 0 or 1.
             # 0 indicates that this config option is informative, and 1 indicated that this option must
             # match on subsequent runs.
             # E.g., for the config_dict['tile_format'] = {options.tile_format: 1}
@@ -2675,6 +2675,11 @@ if __name__ == '__main__':
                             error_and_exit("File '{}' not found.\nYou need to stitch the necessary files before creating paper friendly maps.".format(inputFile))
 
                 pbar.finish()
+
+            if options.prep_for_soft:
+                # Process the tile for the necessary software.
+                pass
+
 
             properties = """Provider: {}
 Overlay: {}
