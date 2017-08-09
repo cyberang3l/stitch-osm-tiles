@@ -2015,7 +2015,9 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 if not os.path.isfile(y_path):
                     LOG.warn("File {} is missing. Maverick tile for this file will not be generated.".format(y_path))
                 else:
-                    shutil.copy2(y_path, y_path_maverick)
+                    # Only copy the file if it doesn't exist already.
+                    if not os.path.isfile(y_path_maverick):
+                        shutil.copy2(y_path, y_path_maverick)
 
 
 
