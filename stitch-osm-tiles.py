@@ -239,6 +239,25 @@ def dynGetTileUrl(z, x, y, download_counter):
         ])
     }),
 
+    ('topoguide', {
+        'attribution':'topoguide',
+        'url':'http://www.topoguide.gr',
+        'dyn_tile_url': False,
+        'tile_servers':['http://5.135.161.95/wms/wmsolv3xyz2.php?z={z}&x={x}&y={y}&t={layer}'],
+        'extension':'png',
+        'zoom_levels':'7-18',
+        'layers': OrderedDict([
+            ('gr', {
+                'name': '15',
+                'desc': 'Topomaps for Greece with Greek labels'
+            }),
+            ('en', {
+                'name': '16',
+                'desc': 'Topomaps for Greece with English labels'
+            })
+        ])
+    }),
+
     # In Nokia maps you can change the ppi=72 to 72, 250, 320 and 500
     # And the value "512" is the width/height of each tile and you can change it to either 128, 256 or 512
     ('Nokia', {
@@ -1975,10 +1994,30 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         missing tiles if there is an available internect connection.
 
         The format of the 'mapserver.txt' is:
+        server_url|extension|max_zoom|projection
+
+        Server URL:
+           Complete url of map tile server.
+           {z} - Zoom
+           {x},{y} - Tile number
+           {stripe} - Cycle server number (1..4)
+           {server} - Cycle server char (a,b..c)
+           {quadkey} - Quadkey numbering system
+           {ln} - Map language (en,it,fr...)
+
+        Extension
+           Use png or jpg.
+
+        Max zoom
+           Maximum zoom level of this map.
+
+        Projection
+           Use 1 for Spheroid (most maps) and 2 for Ellipsoid projection.
+
         http://url.com/{z}/{x}/{y}|<ext>|<max_zoom>|<min_zoom>
 
         For example:
-        https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.jpg|jpg|16|1
+        https://tilesprod.ut.no/tilestache/{z}/{x}/{y}.jpg|jpg|16|1
         """
         maverick_folder = os.path.join(self.project_folder, 'maverick')
 
@@ -1990,10 +2029,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 LOG.warn("No tile servers have been provided. Offline tiles will be generated for Maverick\n"
                          "but you will not be able to download missing files from within the program.")
             else:
-                # TODO: The user should be giving the original extension of the tile server, the min and max
-                #       zooms as optional arguments to the stitch_osm_tiles class. If we want to create proper
+                # TODO: The user should be giving the original extension of the tile server, and the max
+                #       zoom as optional arguments to the stitch_osm_tiles class. If we want to create proper
                 #       maverick files, we need that information. For the moment, I use the saved_tile_format
-                #       and a fixed 18|1 value for the supported zoom level WHICH IS WRONG!
+                #       and a fixed 18 value for the max supported zoom level which is WRONG!
                 if not os.path.isdir(maverick_folder):
                     os.makedirs(maverick_folder)
                 with open(os.path.join(maverick_folder, 'mapserver.txt'), 'w') as mapserverFile:
