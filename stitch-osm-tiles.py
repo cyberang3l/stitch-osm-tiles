@@ -235,7 +235,14 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'tile_servers': ['https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.{ext}'],
                 'extension': 'jpg',
                 'zoom_levels': '0-16'
-            })
+            }),
+            ('svalbard_topo', {
+                'attribution': 'finn.no',
+                'desc': 'Svalbard topographic maps',
+                'tile_servers': ['https://maptiles{alts:1,2,3,4}.finncdn.no/tileService/1.0.3/normap/{z}/{x}/{y}.png'],
+                'extension': 'png',
+                'zoom_levels': '0-17'
+            }),
         ])
     }),
 
