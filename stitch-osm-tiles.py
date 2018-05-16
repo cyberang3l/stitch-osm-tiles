@@ -30,17 +30,17 @@ import datetime
 import math
 import urllib2
 import socket
-import progressbar
 import multiprocessing
 import Queue
 import threading
 import time
 import ConfigParser
-import pgmagick
-import errno
 import httplib
-from pgmagick import Image as gmImage
 from collections import OrderedDict
+import calendar
+import progressbar
+import pgmagick
+from pgmagick import Image as gmImage
 
 __all__ = [
     'quick_regexp', 'print_', 'is_number',
@@ -66,7 +66,7 @@ PROVIDERS = OrderedDict([
     ('Mapquest', {
         'attribution':'Tiles Courtesy of MapQuest',
         'url':'http://www.mapquest.com',
-        'tile_servers': [ 'https://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoibWFwcXVlc3QiLCJhIjoiY2Q2N2RlMmNhY2NiZTRkMzlmZjJmZDk0NWU0ZGJlNTMifQ.mPRiEubbajc6a5y9ISgydg' ], # The tile servers that serve the tiles for this provider.
+        'tile_servers': ['https://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoibWFwcXVlc3QiLCJhIjoiY2Q2N2RlMmNhY2NiZTRkMzlmZjJmZDk0NWU0ZGJlNTMifQ.mPRiEubbajc6a5y9ISgydg'], # The tile servers that serve the tiles for this provider.
         'extension': 'png',     # The default extension support by this provider
         'zoom_levels': '0-18',  # The zoom levels supported by this provider
         'layers': OrderedDict([
@@ -94,7 +94,7 @@ PROVIDERS = OrderedDict([
     ('Stamen', {
         'attribution':'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL',
         'url':'http://maps.stamen.com',
-        'tile_servers': [ 'http://{alts:a,b,c,d}.sm.mapstack.stamen.com/{layer}/{z}/{x}/{y}.{ext}' ],
+        'tile_servers': ['http://{alts:a,b,c,d}.sm.mapstack.stamen.com/{layer}/{z}/{x}/{y}.{ext}'],
         'extension': 'png',
         'zoom_levels': '0-18',
         'layers': OrderedDict([
@@ -209,21 +209,18 @@ def dynGetTileUrl(z, x, y, download_counter):
             ('kartdata2', {
                 'desc': 'Only Maps for Norway'
             }),
-#            ('fjellskygge', {
-#                'desc': 'Mountain shadows'
-#            }),
             ('sjo_hovedkart2', {
                 'desc': 'Sea Map of Norway'
             }),
             ('sjokartraster', {
                 'desc': 'Sea Raster Map of Norway'
             }),
-# The following URL Works with WMTS
-#            ('Geocache_UTM33_WGS84', {
-#                'desc': '',
-#                'tile_servers': ['http://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_WGS84/GeocacheBasis/MapServer/tile/{z}/{y}/{x}'],
-#                'extension': 'jpg'
-#            }),
+            # The following URL Works with WMTS
+            #('Geocache_UTM33_WGS84', {
+            #    'desc': '',
+            #    'tile_servers': ['http://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_WGS84/GeocacheBasis/MapServer/tile/{z}/{y}/{x}'],
+            #    'extension': 'jpg'
+            #}),
             ('egk', {
                 'desc': 'Simple map of Norway'
             }),
@@ -338,9 +335,9 @@ def print_(value_to_be_printed, print_indent=0, spaces_per_indent=4, endl="\n"):
     http://stackoverflow.com/questions/19473085/create-a-nested-dictionary-for-a-word-python?answertab=active#tab-top
     """
 
-    if(isinstance(value_to_be_printed, dict)):
+    if isinstance(value_to_be_printed, dict):
         for key, value in value_to_be_printed.iteritems():
-            if(isinstance(value, dict)):
+            if isinstance(value, dict):
                 print_('{0}{1!r}:'.format(print_indent * spaces_per_indent * ' ', key))
                 print_(value, print_indent + 1)
             else:
@@ -366,22 +363,22 @@ def split_strip(string, separator=","):
 
     If the 'string' is not a string, -1 will be returned
     """
-    if(isinstance(string, str)):
+    if isinstance(string, str):
         return trim_list(string.split(separator))
     else:
         return -1
 
 #----------------------------------------------------------------------
-def xfrange(start = None, stop = None, step = None):
+def xfrange(start=None, stop=None, step=None):
     """ xfrange([start,] stop[, step]) -> generator of floats """
-    if step == None:
+    if step is None:
         step = 1.0
 
-    if stop == None and start != None:
+    if stop is None and start != None:
         stop = start
         start = 0.0
 
-    if stop == None and start == None:
+    if stop is None and start is None:
         print("At least 'stop' should be passed to this function")
         raise KeyError
 
@@ -571,18 +568,20 @@ class executeCommand(object):
         """
         Get the time when the execution started
         """
-        if(isinstance(self._timeStartedExecution, datetime.datetime)):
-            if(inMicroseconds):
-                return int(str(calendar.timegm(self._timeStartedExecution.timetuple())) + str(self._timeStartedExecution.strftime("%f")))
+        if isinstance(self._timeStartedExecution, datetime.datetime):
+            if inMicroseconds:
+                return int(str(calendar.timegm(self._timeStartedExecution.timetuple())) +
+                           str(self._timeStartedExecution.strftime("%f")))
         return self._timeStartedExecution
 
     def getTimeFinishedExecution(self, inMicroseconds=False):
         """
         Get the time when the execution finished
         """
-        if(isinstance(self._timeFinishedExecution, datetime.datetime)):
-            if(inMicroseconds):
-                return int(str(calendar.timegm(self._timeFinishedExecution.timetuple())) + str(self._timeFinishedExecution.strftime("%f")))
+        if isinstance(self._timeFinishedExecution, datetime.datetime):
+            if inMicroseconds:
+                return int(str(calendar.timegm(self._timeFinishedExecution.timetuple())) +
+                           str(self._timeFinishedExecution.strftime("%f")))
         return self._timeFinishedExecution
 
 #----------------------------------------------------------------------
@@ -2855,28 +2854,28 @@ S_degrees_by_southern_most_tile: {}
 max_resolution: {}
 total_stitched_tiles: {}
 resolution_per_stitch: {}""".format(
-                                config_dict['provider'].keys().pop(),
-                                config_dict['overlay'].keys().pop(),
-                                config_dict['tile_format'].keys().pop(),
-                                config_dict['stitched_tile_format'].keys().pop(),
-                                config_dict['zoom'].keys().pop(),
-                                config_dict['longtitude1-west'].keys().pop(),
-                                config_dict['longtitude2-east'].keys().pop(),
-                                config_dict['latitude1-north'].keys().pop(),
-                                config_dict['latitude2-south'].keys().pop(),
-                                config_dict['tile_west'].keys().pop(),
-                                config_dict['tile_east'].keys().pop(),
-                                config_dict['tile_north'].keys().pop(),
-                                config_dict['tile_south'].keys().pop(),
-                                config_dict['total_tiles'].keys().pop(),
-                                config_dict['degrees_by_western_most_tile'].keys().pop(),
-                                config_dict['degrees_by_northern_most_tile'].keys().pop(),
-                                config_dict['degrees_by_eastern_most_tile'].keys().pop(),
-                                config_dict['degrees_by_southern_most_tile'].keys().pop(),
-                                config_dict['max_resolution'].keys().pop(),
-                                config_dict['total_stitched_tiles'].keys().pop(),
-                                config_dict['resolution_per_stitch'].keys().pop()
-                            )
+    config_dict['provider'].keys().pop(),
+    config_dict['overlay'].keys().pop(),
+    config_dict['tile_format'].keys().pop(),
+    config_dict['stitched_tile_format'].keys().pop(),
+    config_dict['zoom'].keys().pop(),
+    config_dict['longtitude1-west'].keys().pop(),
+    config_dict['longtitude2-east'].keys().pop(),
+    config_dict['latitude1-north'].keys().pop(),
+    config_dict['latitude2-south'].keys().pop(),
+    config_dict['tile_west'].keys().pop(),
+    config_dict['tile_east'].keys().pop(),
+    config_dict['tile_north'].keys().pop(),
+    config_dict['tile_south'].keys().pop(),
+    config_dict['total_tiles'].keys().pop(),
+    config_dict['degrees_by_western_most_tile'].keys().pop(),
+    config_dict['degrees_by_northern_most_tile'].keys().pop(),
+    config_dict['degrees_by_eastern_most_tile'].keys().pop(),
+    config_dict['degrees_by_southern_most_tile'].keys().pop(),
+    config_dict['max_resolution'].keys().pop(),
+    config_dict['total_stitched_tiles'].keys().pop(),
+    config_dict['resolution_per_stitch'].keys().pop()
+    )
             LOG.info("\n" + properties + 4*"\n")
 
             # To compose two images (satellite with hybrid on top), use the convert command like this:
