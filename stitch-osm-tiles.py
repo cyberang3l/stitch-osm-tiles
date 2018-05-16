@@ -37,6 +37,7 @@ import time
 import ConfigParser
 import httplib
 from collections import OrderedDict
+import distutils.spawn
 import calendar
 import progressbar
 import pgmagick
@@ -2671,6 +2672,10 @@ if __name__ == '__main__':
     _configureLogging(options.loglevel)
     # Validate the command line arguments
     validate_arguments(options)
+
+    if distutils.spawn.find_executable('gm') is None:
+        error_and_exit('The command `gm` (provided by graphicsmagick) could not be found in your $PATH\n'
+                       'Please install graphicsmagick before you use this script.')
 
     LOG.info("Welcome to OSM Tile Stitcher v" + str(__version__))
     LOG.info("----------------------------------\n")
