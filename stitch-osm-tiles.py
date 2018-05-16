@@ -365,8 +365,8 @@ def split_strip(string, separator=","):
     """
     if isinstance(string, str):
         return trim_list(string.split(separator))
-    else:
-        return -1
+
+    return -1
 
 #----------------------------------------------------------------------
 def xfrange(start=None, stop=None, step=None):
@@ -480,7 +480,7 @@ class quick_regexp(object):
         match = re.search(pattern, string, flags)
         if match:
             self.matched = True
-            if(match.groups()):
+            if match.groups():
                 self.groups = re.search(pattern, string, flags).groups()
             else:
                 self.groups = True
@@ -506,20 +506,20 @@ class executeCommand(object):
         self._timeFinishedExecution = None
         self._args = args
         self.isUtc = isUtc
-        if(self._args != None):
+        if self._args != None:
             self.execute()
 
     def execute(self, args=None):
-        if(args != None):
+        if args != None:
             self._args = args
 
-        if(self._args != None):
-            if(self.isUtc):
+        if self._args != None:
+            if self.isUtc:
                 self._timeStartedExecution = datetime.datetime.utcnow()
             else:
                 self._timeStartedExecution = datetime.datetime.now()
             p = subprocess.Popen(self._args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if(self.isUtc):
+            if self.isUtc:
                 self._timeFinishedExecution = datetime.datetime.utcnow()
             else:
                 self._timeFinishedExecution = datetime.datetime.now()
@@ -606,17 +606,17 @@ def _configureLogging(loglevel):
             raise ValueError()
     except ValueError:
         error_and_exit('Invalid log level: %s\n'
-        '\tLog level must be set to one of the following:\n'
-        '\t   CRITICAL <- Least verbose\n'
-        '\t   ERROR\n'
-        '\t   WARNING\n'
-        '\t   INFO\n'
-        '\t   DEBUG    <- Most verbose'  % loglevel)
+                       '\tLog level must be set to one of the following:\n'
+                       '\t   CRITICAL <- Least verbose\n'
+                       '\t   ERROR\n'
+                       '\t   WARNING\n'
+                       '\t   INFO\n'
+                       '\t   DEBUG    <- Most verbose'  % loglevel)
 
     defaultLogger = logging.getLogger('default')
 
     # If numeric_log_level == 0 (NOTSET), disable logging.
-    if(not numeric_log_level):
+    if not numeric_log_level:
         numeric_log_level = 1000
     defaultLogger.setLevel(numeric_log_level)
 
@@ -820,7 +820,7 @@ def _command_Line_Options():
 
     opts = parser.parse_args()
 
-    if(opts.isQuiet):
+    if opts.isQuiet:
         opts.loglevel = "NOTSET"
 
     return opts
@@ -851,7 +851,7 @@ def expand_zoom_levels(zoom_levels):
             if is_number(zoom[0], is_int=True) and is_number(zoom[1], is_int=True):
                 z1 = int(zoom[0])
                 z2 = int(zoom[1])
-                if (z2 > z1):
+                if z2 > z1:
                     expanded_zoom_levels.extend(range(z1, z2 + 1))
                 else:
                     expanded_zoom_levels.extend(range(z2, z1 + 1))
@@ -1024,7 +1024,7 @@ def read_zoom_config(zoom, options):
             config = ConfigParser.ConfigParser()
             config.read(zoom_conf)
 
-            if(config.has_section(main_config_section)):
+            if config.has_section(main_config_section):
                 for key, val in options.items():
                     # val.values().pop() returns either 0 or 1, indicating if we
                     # care to check this option.
@@ -1039,7 +1039,7 @@ def read_zoom_config(zoom, options):
                                                    config_val,
                                                    val.keys().pop()
                                                )
-                                               )
+                                              )
                         else:
                             error_and_exit("Option '{0}' is defined in the current run, but it doesn't exist in the configuration file '{1}'.\n"
                                            "This option should match since a configuration file exists (indicating that you have "
@@ -1047,7 +1047,7 @@ def read_zoom_config(zoom, options):
                                                key,
                                                zoom_conf
                                            )
-                                           )
+                                          )
 
     except IOError as e:
         # If the error number is 2 (no such file or directory), the conf file does no
@@ -1091,14 +1091,14 @@ class stitch_osm_tiles(object):
     #----------------------------------------------------------------------
     def __init__(self,
                  zoom,
-                 project_folder = 'maps_project',
-                 tile_servers = None,
-                 dyn_tile_url = False,
-                 saved_tile_format = 'png',
-                 saved_stitched_tile_format = 'png',
-                 max_stitch_dimensions = 10000,
-                 parallelDownloadThreads = 10,
-                 parallelStitchingThreads = 1):
+                 project_folder='maps_project',
+                 tile_servers=None,
+                 dyn_tile_url=False,
+                 saved_tile_format='png',
+                 saved_stitched_tile_format='png',
+                 max_stitch_dimensions=10000,
+                 parallelDownloadThreads=10,
+                 parallelStitchingThreads=1):
         """
         zoom: The zoom level where the class will be working with for downloading and stitching.
         project_folder: Project folder defines where the tiles will be downloaded and where the stitches will
@@ -1233,7 +1233,7 @@ class stitch_osm_tiles(object):
         lon_deg = float(xpixel) / original_tiles_width / n * 360.0 - 180
 
         num_pixel = math.pi - 2.0 * math.pi * ypixel / original_tiles_height / n
-        lat_deg = 180.0 / math.pi * math.atan2(0.5 * (math.exp(num_pixel) - math.exp(-num_pixel) ), 1)
+        lat_deg = 180.0 / math.pi * math.atan2(0.5 * (math.exp(num_pixel) - math.exp(-num_pixel)), 1)
 
         return (lat_deg, lon_deg)
 
@@ -1331,15 +1331,15 @@ MMPLL,4, {14}, {13}
 MM1B,{18}
 MOP,Map Open Position,0,0
 IWH,Map Image Width/Height,{16},{17}""".format(
-                                                N_OZI[0], N_OZI[1], N_OZI[2],
-                                                S_OZI[0], S_OZI[1], S_OZI[2],
-                                                W_OZI[0], W_OZI[1], W_OZI[2],
-                                                E_OZI[0], E_OZI[1], E_OZI[2],
-                                                N, S, W, E,
-                                                width, height, MMB1,
-                                                filename, extension,
-                                                '0'.rjust(5), str(width - 1).rjust(5), str(height - 1).rjust(5)
-                                            )
+    N_OZI[0], N_OZI[1], N_OZI[2],
+    S_OZI[0], S_OZI[1], S_OZI[2],
+    W_OZI[0], W_OZI[1], W_OZI[2],
+    E_OZI[0], E_OZI[1], E_OZI[2],
+    N, S, W, E,
+    width, height, MMB1,
+    filename, extension,
+    '0'.rjust(5), str(width - 1).rjust(5), str(height - 1).rjust(5)
+    )
 
         return ozi_map_file
 
@@ -1361,7 +1361,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 req = urllib2.Request(url)
 
                 try:
-                    resp = urllib2.urlopen(req, timeout = 20)
+                    resp = urllib2.urlopen(req, timeout=20)
                 except urllib2.HTTPError as e:
                     # e.code contains the actual error code
                     retval = (e, url, download_path, 'HTTPError')
@@ -1498,7 +1498,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         widgets = ['Downloading tile ', progressbar.Counter(format='%{}d'.format(len(str(total_tiles)))), '/{}: '.format(total_tiles),
                    progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-        pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_tiles, fd = myProgressBarFd).start()
+        pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_tiles, fd=myProgressBarFd).start()
 
         # How I implemented the thread pool:
         #   I have an input queue (self._inQueue), an output queue (self._outQueue) and a pool of download threads (the number
@@ -1569,7 +1569,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     while url in self._itemsInProcessing:
                         time.sleep(0.01)
 
-                counter+=1
+                counter += 1
 
         # Wait for the threads to finish their work by joining the in/out Queues
         self._inDownloadQueue.join()
@@ -1621,7 +1621,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         number_of_vertical_tiles = (tile_south - tile_north) + 1
 
         # If we do not already know the dimensions of the tiles, then read the dimensions.
-        if self._tile_height == None or self._tile_width == None:
+        if self._tile_height is None or self._tile_width is None:
             x_path = os.path.join(self.project_folder, str(self.zoom), str(tile_west))
             first_y_tile_path = '{}.{}'.format(os.path.join(x_path, str(tile_north)), self.saved_tile_format)
             try:
@@ -1648,24 +1648,24 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # If the accurately divided number does not result in a resolution less than
                 # self.max_stitch_dimensions, increase the divisor and try again.
                 if total_vertical_resolution / vertical_divide_by > self.max_stitch_dimensions:
-                    vertical_divide_by+=1
+                    vertical_divide_by += 1
                 else:
                     # Otherwise use this value for the vertical resolution
                     # and keep this divisor
                     vertical_resolution_per_stitch = total_vertical_resolution / vertical_divide_by
             else:
                 # Otherwise, increase the divisor
-                vertical_divide_by+=1
+                vertical_divide_by += 1
 
         # Same story as the previous while-loop, but do it for the horizontal resolution.
         while horizontal_resolution_per_stitch > self.max_stitch_dimensions:
-            if(total_horizontal_resolution % horizontal_divide_by == 0):
+            if total_horizontal_resolution % horizontal_divide_by == 0:
                 if total_horizontal_resolution / horizontal_divide_by > self.max_stitch_dimensions:
-                    horizontal_divide_by+=1
+                    horizontal_divide_by += 1
                 else:
                     horizontal_resolution_per_stitch = total_horizontal_resolution / horizontal_divide_by
             else:
-                horizontal_divide_by+=1
+                horizontal_divide_by += 1
 
         return {
             'total_vertical_resolution': total_vertical_resolution,
@@ -1677,7 +1677,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         }
 
     #----------------------------------------------------------------------
-    def _stitch_thumbnail(self, img, thumb_filepath, x_res = 144, y_res = 144):
+    def _stitch_thumbnail(self, img, thumb_filepath, x_res=144, y_res=144):
         """
         Function to generate a thumbnail from a stitch img.
         img is a graphicmagick Image object.
@@ -1783,7 +1783,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         widgets = ['Stitching tile ', progressbar.Counter(format='%{}d'.format(len(str(total_stitches)))), '/{}: '.format(total_stitches),
                    progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-        pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_stitches, fd = myProgressBarFd).start()
+        pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_stitches, fd=myProgressBarFd).start()
 
 
         # If we have a matrix of files like the following one,
@@ -1939,7 +1939,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         widgets = ['Calibrating stitches: ', progressbar.Counter(format='%{}d'.format(len(str(total_stitches)))), '/{}: '.format(total_stitches),
                    progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-        pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_stitches, fd = myProgressBarFd).start()
+        pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_stitches, fd=myProgressBarFd).start()
 
         stitches_path = os.path.join(self.project_folder, "stitched_maps", str(zoom))
         if not os.path.isdir(stitches_path):
@@ -2098,7 +2098,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                         shutil.copy2(y_path, y_path_osmand)
 
 #----------------------------------------------------------------------
-def DrawableMapNorth(x, y, size = 100, anchor = 'lowerleft'):
+def DrawableMapNorth(x, y, size=100, anchor='lowerleft'):
     """
     x: An integer for x placement
     y: An integer for y placement
@@ -2212,7 +2212,7 @@ def DrawableMapNorth(x, y, size = 100, anchor = 'lowerleft'):
     return north
 
 #----------------------------------------------------------------------
-def DrawableMapCompass(x, y, radius = 100, anchor = 'lowerleft'):
+def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
     """
     Draw a compass on the map of 'radius' size (the actual size is radius * 2)
     """
@@ -2337,7 +2337,7 @@ def DrawableMapCompass(x, y, radius = 100, anchor = 'lowerleft'):
     return compass
 
 #----------------------------------------------------------------------
-def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_by = 256, y_grid_by = 256):
+def DrawableMapGrid(map_width, map_height, canvas_margin, thickness=2, x_grid_by=256, y_grid_by=256):
     """
     Draw the Grid for the given map width and height.
 
@@ -2380,7 +2380,7 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness = 2, x_grid_
     return grid
 
 #----------------------------------------------------------------------
-def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize = 80, x_grid_by = 256, y_grid_by = 256):
+def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize=80, x_grid_by=256, y_grid_by=256):
     """
     Draw the labels on the sides of the canvas
 
@@ -2409,7 +2409,7 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize = 80, x_gri
         x = round(x)
         lab = ''.join(chr(i) for i in ascii_chr)
         pgmagick.Image.fontTypeMetrics(text, lab, fontmetric)
-        labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2), canvas_margin - 30 , lab))
+        labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2), canvas_margin - 30, lab))
         labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2),
                                             map_height + canvas_margin + 30 + (fontmetric.ascent() + fontmetric.descent()), lab))
         # If we reached Z, start counting from AA, AB, AC etc...
@@ -2438,7 +2438,7 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize = 80, x_gri
     return labels
 
 #----------------------------------------------------------------------
-def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize = 16, anchor = 'lowerleft'):
+def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='lowerleft'):
     """
     The ruler size defines the thickness of the ruler.
 
@@ -2683,15 +2683,15 @@ if __name__ == '__main__':
             if not os.path.isdir(zoom_folder):
                 os.mkdir(zoom_folder)
 
-            tileWorker = stitch_osm_tiles(zoom = zoom,
-                                          project_folder = options.project_folder,
-                                          tile_servers = options.tile_servers,
-                                          dyn_tile_url = options.dyn_tile_url,
-                                          saved_tile_format = options.tile_format,
-                                          saved_stitched_tile_format = options.stitched_tile_format,
-                                          max_stitch_dimensions = options.max_resolution_px,
-                                          parallelDownloadThreads = options.download_threads,
-                                          parallelStitchingThreads = options.stitching_threads)
+            tileWorker = stitch_osm_tiles(zoom=zoom,
+                                          project_folder=options.project_folder,
+                                          tile_servers=options.tile_servers,
+                                          dyn_tile_url=options.dyn_tile_url,
+                                          saved_tile_format=options.tile_format,
+                                          saved_stitched_tile_format=options.stitched_tile_format,
+                                          max_stitch_dimensions=options.max_resolution_px,
+                                          parallelDownloadThreads=options.download_threads,
+                                          parallelStitchingThreads=options.stitching_threads)
 
             # TODO: All the stitch_osm_tiles class functions should operate on the same tiles as they
             #       operate on the same zoom level. This means that functions such as the stitch_tiles
@@ -2759,11 +2759,11 @@ if __name__ == '__main__':
             dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
 
             config_dict['total_stitched_tiles'] = {'{} ({}x{})'.format(dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
-                                                                      dimensions['horizontal_divide_by'],
-                                                                      dimensions['vertical_divide_by']): 0}
+                                                                       dimensions['horizontal_divide_by'],
+                                                                       dimensions['vertical_divide_by']): 0}
             config_dict['resolution_per_stitch'] = {'{}x{} px ({} MPixels)'.format(dimensions['horizontal_resolution_per_stitch'],
-                                                                                  dimensions['vertical_resolution_per_stitch'],
-                                                                                  round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)): 0}
+                                                                                   dimensions['vertical_resolution_per_stitch'],
+                                                                                   round(dimensions['horizontal_resolution_per_stitch'] * dimensions['vertical_resolution_per_stitch'] / 1000000.0, 1)): 0}
             write_zoom_config(zoom_conf, config_dict, main_config_section)
 
             if not options.skip_stitching and not options.only_calibrate:
@@ -2787,7 +2787,7 @@ if __name__ == '__main__':
                 widgets = ['Preparing paper friendly maps ', progressbar.Counter(format='%{}d'.format(len(str(total_tiles)))), '/{}: '.format(total_tiles),
                            progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-                pbar = progressbar.ProgressBar(widgets = widgets, maxval = total_tiles, fd = myProgressBarFd).start()
+                pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_tiles, fd=myProgressBarFd).start()
 
                 printer_maps_path = os.path.join(options.project_folder, "paper_maps", str(zoom))
                 if not os.path.isdir(printer_maps_path):
@@ -2811,7 +2811,7 @@ if __name__ == '__main__':
                                                 E = float(r.groups[0])
                                                 S = float(r.groups[1])
 
-                                    if (N == None or S == None or W == None or E == None):
+                                    if (N is None or S is None or W is None or E is None):
                                         error_and_exit("Could not read the coordinates from the map file '{}' properly.".format(mapCalibrationFile))
 
                                     prepareStitchForPrint(inputFile, zoom, outputFile, N, S, W, E)
