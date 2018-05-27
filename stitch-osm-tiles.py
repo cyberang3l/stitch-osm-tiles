@@ -189,11 +189,11 @@ def dynGetTileUrl(z, x, y, download_counter):
         'extension': 'png',
         'zoom_levels': '0-17',
         'layers': OrderedDict([
-            ('topo2', {
+            ('topo4', {
                 'desc': 'High Quality Topo Maps of Norway'
             }),
-            ('topo2graatone', {
-                'desc': 'Same as topo2 in Grayscale'
+            ('topo4graatone', {
+                'desc': 'Same as topo4 in Grayscale'
             }),
             ('toporaster3', {
                 'desc': 'High Quality TopoRaster Maps of Norway'
