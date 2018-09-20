@@ -228,6 +228,10 @@ def dynGetTileUrl(z, x, y, download_counter):
             ('matrikkel_bakgrunn', {
                 'desc': 'House map of Norway'
             }),
+            ('norgeskart_bakgrunn', {
+                'desc': 'High quality topographic maps of Norway with many details. Probably the best maps you can find for Norway.',
+                'zoom_levels': '0-18'
+            }),
             ('ut_topo_light', {
                 'desc': 'DNT Hiking Maps with Contour Lines for Norway',
                 'tile_servers': ['https://tilesprod.ut.no/tilestache/{layer}/{z}/{x}/{y}.{ext}'],
