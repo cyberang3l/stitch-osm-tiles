@@ -323,6 +323,14 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'extension': 'png',
                 'zoom_levels': '1-17',
                 'desc': 'Topo Map with contours from OpenStreetMap data'
+            }),
+            ('overlay_hiking_paths', {
+                'attribution': '',
+                'url': 'https://hiking.waymarkedtrails.org',
+                'tile_servers': ['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.{ext}'],
+                'extension': 'png',
+                'zoom_levels': '1-17',
+                'desc': 'Waymarkedtrails hiking paths (ex Lonvia hiking)'
             })
         ])
     }),
