@@ -319,7 +319,7 @@ def dynGetTileUrl(z, x, y, download_counter):
             ('opentopomap', {
                 'attribution': 'OpenTopoMap',
                 'url': 'https://opentopomap.org',
-                'tile_servers': ['http://opentopomap.org/{z}/{x}/{y}.{ext}'],
+                'tile_servers': ['https://opentopomap.org/{z}/{x}/{y}.{ext}'],
                 'extension': 'png',
                 'zoom_levels': '1-17',
                 'desc': 'Topo Map with contours from OpenStreetMap data'
