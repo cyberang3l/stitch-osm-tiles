@@ -933,6 +933,7 @@ def validate_arguments(options):
         options.tile_server_provider = options.custom_osm_server
         options.tile_server_provider_layer = None
         options.tile_servers = [options.custom_osm_server]
+        options.dyn_tile_url = False
     else:
         # If the custom server is not provided, use one of the available providers.
         if not options.tile_server_provider.lower() in [p.lower() for p in PROVIDERS.keys()]:
