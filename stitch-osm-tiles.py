@@ -207,9 +207,6 @@ def dynGetTileUrl(z, x, y, download_counter):
             ('norges_grunnkart_graatone', {
                 'desc': 'High Quality Base Maps of Norway in Grayscale'
             }),
-            ('kartdata2', {
-                'desc': 'Only Maps for Norway'
-            }),
             ('sjo_hovedkart2', {
                 'desc': 'Sea Map of Norway'
             }),
@@ -224,9 +221,6 @@ def dynGetTileUrl(z, x, y, download_counter):
             #}),
             ('egk', {
                 'desc': 'Simple map of Norway'
-            }),
-            ('matrikkel_bakgrunn', {
-                'desc': 'House map of Norway'
             }),
             ('norgeskart_bakgrunn', {
                 'desc': 'High quality topographic maps of Norway with many details. Probably the best maps you can find for Norway.',
