@@ -165,7 +165,7 @@ def dynGetTileUrl(z, x, y, download_counter):
         'dyn_tile_url': True,
         'tile_servers': ["""
 def dynGetTileUrl(z, x, y, download_counter):
-    return "https://map.eniro.com/geowebcache/service/tms1.0.0/{layer}/{}/{}/{}.{ext}".format(z, x, ((1 << z) - 1 - y))
+    return "http://map.eniro.com/geowebcache/service/tms1.0.0/{layer}/{}/{}/{}.{ext}".format(z, x, ((1 << z) - 1 - y))
         """],
         'extension':'png',
         'zoom_levels':'2-20',
@@ -174,7 +174,8 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'desc': 'Eniro Map (NO,SE,FI,DK,PL)'
             }),
             ('aerial', {
-                'desc': 'Eniro Aerial (NO,SE,DK)'
+                'desc': 'Eniro Aerial (NO,SE,DK)',
+                'extension': 'jpeg'
             }),
             ('nautical', {
                 'desc': 'Eniro Nautical (NO,SE)'
@@ -1823,7 +1824,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # from jpg files, the resulting montaged images are half of the expected size. So when stitching
                 # from jpg source files, use the imagemagick montage, while for all the rest, use gm montage which
                 # is faster.
-                if self.saved_tile_format == 'jpg':
+                if self.saved_tile_format == 'jpg' or self.saved_tile_format == 'jpeg':
                     montage_cmd = ['montage']
                 else:
                     montage_cmd = ['gm', 'montage']
