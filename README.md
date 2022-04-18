@@ -6,7 +6,7 @@ Stitch OpenStreetMap tiles and generate very large regions of maps for high qual
 
 Both graphics magick and imagemagick are needed.
 
-`apt-get install graphicsmagick imagemagick`
+`apt-get install graphicsmagick imagemagick libgraphicsmagick++1-dev libboost-python-dev`
 
 The 'identify' utility of the imagemagick library is much much faster, but graphicsmagick library's montage and crop operations that are used by this script, are much faster. That's why I use both libraries. Moreover, graphicsmagick jpg stitching results in half sized tiles. This must be a bug, but I haven't bothered looking deeper into it. Whenever the script stitches large tiles from jpg sources, imagemagick is used instead.
 

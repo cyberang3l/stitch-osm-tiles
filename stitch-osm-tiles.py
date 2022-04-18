@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf8 -*-
 #
 # Copyright (C) 2017 Vangelis Tasoulas <vangelis@tasoulas.net>
@@ -28,14 +28,14 @@ import logging
 import subprocess
 import datetime
 import math
-import urllib2
+import urllib3
 import socket
 import multiprocessing
-import Queue
+import queue
 import threading
 import time
-import ConfigParser
-import httplib
+import configparser
+import http.client as httplib
 from collections import OrderedDict
 import distutils.spawn
 import calendar
@@ -60,14 +60,15 @@ __author__ = 'Vangelis Tasoulas (vangelis@tasoulas.net)'
 
 LOG = logging.getLogger('default.' + __name__)
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Define the providers and the layer available by each provider in an ordered dict!
 #    Individual layers can override the following parameters: 'tileservers', 'extension', 'zoom_levels'
 PROVIDERS = OrderedDict([
     ('Mapquest', {
-        'attribution':'Tiles Courtesy of MapQuest',
-        'url':'http://www.mapquest.com',
-        'tile_servers': ['https://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoibWFwcXVlc3QiLCJhIjoiY2Q2N2RlMmNhY2NiZTRkMzlmZjJmZDk0NWU0ZGJlNTMifQ.mPRiEubbajc6a5y9ISgydg'], # The tile servers that serve the tiles for this provider.
+        'attribution': 'Tiles Courtesy of MapQuest',
+        'url': 'http://www.mapquest.com',
+        # The tile servers that serve the tiles for this provider.
+        'tile_servers': ['https://{alts:a,b,c,d}.tiles.mapbox.com/v4/{layer}/{z}/{x}/{y}.{ext}?access_token=pk.eyJ1IjoibWFwcXVlc3QiLCJhIjoiY2Q2N2RlMmNhY2NiZTRkMzlmZjJmZDk0NWU0ZGJlNTMifQ.mPRiEubbajc6a5y9ISgydg'],
         'extension': 'png',     # The default extension support by this provider
         'zoom_levels': '0-18',  # The zoom levels supported by this provider
         'layers': OrderedDict([
@@ -93,8 +94,8 @@ PROVIDERS = OrderedDict([
     }),
 
     ('Stamen', {
-        'attribution':'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL',
-        'url':'http://maps.stamen.com',
+        'attribution': 'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL',
+        'url': 'http://maps.stamen.com',
         'tile_servers': ['http://{alts:a,b,c,d}.sm.mapstack.stamen.com/{layer}/{z}/{x}/{y}.{ext}'],
         'extension': 'png',
         'zoom_levels': '0-18',
@@ -112,13 +113,14 @@ PROVIDERS = OrderedDict([
     }),
 
     ('Microsoft', {
-        'attribution':'Bing Maps Platform',
-        'url':'https://www.bing.com/maps',
-        'dyn_tile_url': True, # When 'dyn_tile_url' exists, that's an indication that the 'tile_servers'
-                              # provide a dynGetTileUrl(z, x, y, download_counter) function to find the
-                              # correct URL and not the URL itself!
-                              # That means that the tile_servers must be exec'ed and the function
-                              # dynGetTileUrl has to be called in order to get the correct URL.
+        'attribution': 'Bing Maps Platform',
+        'url': 'https://www.bing.com/maps',
+        # When 'dyn_tile_url' exists, that's an indication that the 'tile_servers'
+        'dyn_tile_url': True,
+        # provide a dynGetTileUrl(z, x, y, download_counter) function to find the
+        # correct URL and not the URL itself!
+        # That means that the tile_servers must be exec'ed and the function
+        # dynGetTileUrl has to be called in order to get the correct URL.
         'tile_servers': ["""
 def eqt(z, x, y):
     NUM_CHAR = [ '0', '1', '2', '3' ]
@@ -158,10 +160,10 @@ def dynGetTileUrl(z, x, y, download_counter):
     }),
 
     ('Eniro', {
-        'attribution':'Eniro',
-        'url':'http://map.eniro.com',
+        'attribution': 'Eniro',
+        'url': 'http://map.eniro.com',
         'dyn_tile_url': True,
-        'tile_servers':["""
+        'tile_servers': ["""
 def dynGetTileUrl(z, x, y, download_counter):
     return "https://map.eniro.com/geowebcache/service/tms1.0.0/{layer}/{}/{}/{}.{ext}".format(z, x, ((1 << z) - 1 - y))
         """],
@@ -183,8 +185,8 @@ def dynGetTileUrl(z, x, y, download_counter):
     # For more maps of Norway take a look here: https://kartkatalog.geonorge.no
     #                                 and here: https://www.norgeskart.no
     ('Statkart', {
-        'attribution':'http://www.kartverket.no/kart/gratis-kartdata/wms-tjenester/',
-        'url':'http://www.kartverket.no/data/lage-kart-pa-nett/',
+        'attribution': 'http://www.kartverket.no/kart/gratis-kartdata/wms-tjenester/',
+        'url': 'http://www.kartverket.no/data/lage-kart-pa-nett/',
         'tile_servers': ['http://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers={layer}&zoom={z}&x={x}&y={y}'],
         'extension': 'png',
         'zoom_levels': '0-17',
@@ -214,11 +216,11 @@ def dynGetTileUrl(z, x, y, download_counter):
                 'desc': 'Sea Raster Map of Norway'
             }),
             # The following URL Works with WMTS
-            #('Geocache_UTM33_WGS84', {
+            # ('Geocache_UTM33_WGS84', {
             #    'desc': '',
             #    'tile_servers': ['http://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_WGS84/GeocacheBasis/MapServer/tile/{z}/{y}/{x}'],
             #    'extension': 'jpg'
-            #}),
+            # }),
             ('egk', {
                 'desc': 'Simple map of Norway'
             }),
@@ -243,10 +245,10 @@ def dynGetTileUrl(z, x, y, download_counter):
     }),
 
     ('topoguide', {
-        'attribution':'topoguide',
-        'url':'http://www.topoguide.gr',
+        'attribution': 'topoguide',
+        'url': 'http://www.topoguide.gr',
         'dyn_tile_url': False,
-        'tile_servers':['http://5.135.161.95/wms/wmsolv3xyz2.php?z={z}&x={x}&y={y}&t={layer}'],
+        'tile_servers': ['http://5.135.161.95/wms/wmsolv3xyz2.php?z={z}&x={x}&y={y}&t={layer}'],
         'extension':'png',
         'zoom_levels':'7-18',
         'layers': OrderedDict([
@@ -264,8 +266,8 @@ def dynGetTileUrl(z, x, y, download_counter):
     # In Nokia maps you can change the ppi=72 to 72, 250, 320 and 500
     # And the value "512" is the width/height of each tile and you can change it to either 128, 256 or 512
     ('Nokia', {
-        'attribution':'Nokia maps',
-        'url':'https://wego.here.com',
+        'attribution': 'Nokia maps',
+        'url': 'https://wego.here.com',
         'tile_servers': ['https://{alts:1,2,3,4}.base.maps.api.here.com/maptile/2.1/maptile/afd6f70912/{layer}/{z}/{x}/{y}/256/png8?app_id=xWVIueSv6JL0aJ5xqTxb&app_code=djPZyynKsbTjIUDOBcHZ2g&lg=eng&ppi=250'],
         'extension': 'png',
         'zoom_levels': '2-18',
@@ -293,8 +295,8 @@ def dynGetTileUrl(z, x, y, download_counter):
     }),
 
     ('ArcGIS', {
-        'attribution':'',
-        'url':'http://www.arcgis.com/',
+        'attribution': '',
+        'url': 'http://www.arcgis.com/',
         'tile_servers': ['http://server.arcgisonline.com/ArcGIS/rest/services/{layer}/MapServer/tile/{z}/{y}/{x}'],
         'extension': 'jpg',
         'zoom_levels': '0-17',
@@ -308,7 +310,7 @@ def dynGetTileUrl(z, x, y, download_counter):
         ])
     }),
     ('Misc', {
-        'attribution':'',
+        'attribution': '',
         'layers': OrderedDict([
             ('opentopomap', {
                 'attribution': 'OpenTopoMap',
@@ -331,7 +333,9 @@ def dynGetTileUrl(z, x, y, download_counter):
 
 ])
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def error_and_exit(message):
     """
     Prints the "message" and exits with status 1
@@ -339,7 +343,9 @@ def error_and_exit(message):
     LOG.error("\nERROR:\n" + message + "\n")
     exit(1)
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def print_(value_to_be_printed, print_indent=0, spaces_per_indent=4, endl="\n"):
     """
     This function, among anything else, it will print dictionaries (even nested ones) in a good looking way
@@ -358,15 +364,20 @@ def print_(value_to_be_printed, print_indent=0, spaces_per_indent=4, endl="\n"):
     if isinstance(value_to_be_printed, dict):
         for key, value in value_to_be_printed.iteritems():
             if isinstance(value, dict):
-                print_('{0}{1!r}:'.format(print_indent * spaces_per_indent * ' ', key))
+                print_('{0}{1!r}:'.format(
+                    print_indent * spaces_per_indent * ' ', key))
                 print_(value, print_indent + 1)
             else:
-                print_('{0}{1!r}: {2}'.format(print_indent * spaces_per_indent * ' ', key, value))
+                print_('{0}{1!r}: {2}'.format(print_indent *
+                                              spaces_per_indent * ' ', key, value))
     else:
-        string = ('{0}{1}{2}'.format(print_indent * spaces_per_indent * ' ', value_to_be_printed, endl))
+        string = ('{0}{1}{2}'.format(print_indent *
+                                     spaces_per_indent * ' ', value_to_be_printed, endl))
         sys.stdout.write(string)
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def trim_list(string_list):
     """
     This function will parse all the elements from a list of strings (string_list),
@@ -374,7 +385,9 @@ def trim_list(string_list):
     """
     return [s.strip() for s in string_list]
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def split_strip(string, separator=","):
     """
     splits the given string in 'sep' and trims the whitespaces or new lines
@@ -388,7 +401,9 @@ def split_strip(string, separator=","):
 
     return -1
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def xfrange(start=None, stop=None, step=None):
     """ xfrange([start,] stop[, step]) -> generator of floats """
     if step is None:
@@ -411,7 +426,9 @@ def xfrange(start=None, stop=None, step=None):
         print("Non numeric value. Only numeric values are accepted.")
         raise KeyError
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def is_number(s, is_int=False):
     """
     If is_int=True, returns True if 's' is a valid integer number (positive or negative)
@@ -427,7 +444,9 @@ def is_number(s, is_int=False):
     except ValueError:
         return False
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def get_physical_cores():
     """
     Returns the number of actual physical cores, in contrast to
@@ -450,9 +469,10 @@ def get_physical_cores():
         # this case and that's the only supported posix OS for the moment)
         phys_ids_encountered = []
         total_cores = 0
-        cmd = executeCommand(['grep', 'physical id\|cpu cores', '/proc/cpuinfo'])
+        cmd = executeCommand(
+            ['grep', 'physical id\|cpu cores', '/proc/cpuinfo'])
         r = quick_regexp()
-        for line_no in xrange(len(cmd.getStdout())):
+        for line_no in range(len(cmd.getStdout())):
             if r.search('physical id\s+:\s+(\d+)', cmd.getStdout()[line_no]):
                 if not r.groups[0] in phys_ids_encountered:
                     phys_ids_encountered.append(r.groups[0])
@@ -464,7 +484,9 @@ def get_physical_cores():
 
     return total_cores
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def instantiate_threadpool(threadpool_name, threads, worker, args):
     """
     Instantiates a threadpool with 'threads' number 'worker' threads
@@ -473,13 +495,16 @@ def instantiate_threadpool(threadpool_name, threads, worker, args):
     args must be a tuple.
     """
 
-    for i in xrange(threads):
+    for i in range(threads):
         thread_worker = threading.Thread(target=worker, args=(args))
         thread_worker.setName('{}-{}'.format(threadpool_name, i))
+        LOG.debug("Starting thread worker: {}".format(thread_worker.getName()))
         thread_worker.setDaemon(True)
         thread_worker.start()
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 class quick_regexp(object):
     """
     Quick regular expression class, which can be used directly in if() statements in a perl-like fashion.
@@ -490,12 +515,13 @@ class quick_regexp(object):
         print(r.groups[0]) # Prints 'test'
         print(r.groups[1]) # Prints '123'
     """
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
+
     def __init__(self):
         self.groups = None
         self.matched = False
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def search(self, pattern, string, flags=0):
         match = re.search(pattern, string, flags)
         if match:
@@ -510,7 +536,9 @@ class quick_regexp(object):
 
         return self.matched
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 class executeCommand(object):
     """
     Custom class to execute a shell command and
@@ -538,7 +566,8 @@ class executeCommand(object):
                 self._timeStartedExecution = datetime.datetime.utcnow()
             else:
                 self._timeStartedExecution = datetime.datetime.now()
-            p = subprocess.Popen(self._args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p = subprocess.Popen(
+                self._args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if self.isUtc:
                 self._timeFinishedExecution = datetime.datetime.utcnow()
             else:
@@ -552,7 +581,7 @@ class executeCommand(object):
             self._returncode = None
             return 0
 
-    def getStdout(self, getList=True):
+    def getStdout(self, getList=True, decode=True):
         """
         Get the standard output of the executed command
 
@@ -560,12 +589,18 @@ class executeCommand(object):
                  Otherwise, return the result as one string
         """
 
+        if getList and not decode:
+            raise BaseException("decode can only be True when getList == True")
+
         if getList:
-            return self._stdout.split('\n')
+            return self._stdout.decode('utf-8').split('\n')
 
-        return self._stdout
+        if decode:
+            return self._stdout.decode('utf-8')
+        else:
+            return self._stdout
 
-    def getStderr(self, getList=True):
+    def getStderr(self, getList=True, decode=True):
         """
         Get the error output of the executed command
 
@@ -573,10 +608,16 @@ class executeCommand(object):
                  Otherwise, return the result as one string
         """
 
-        if getList:
-            return self._stderr.split('\n')
+        if getList and not decode:
+            raise BaseException("decode can only be True when getList == True")
 
-        return self._stderr
+        if getList:
+            return self._stderr.decode('utf-8').split('\n')
+
+        if decode:
+            return self._stderr.decode('utf-8')
+        else:
+            return self._stderr
 
     def getReturnCode(self):
         """
@@ -604,12 +645,13 @@ class executeCommand(object):
                            str(self._timeFinishedExecution.strftime("%f")))
         return self._timeFinishedExecution
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 ########################################
 ###### Configure logging behavior ######
 ########################################
 # No need to change anything here
+
 
 def _configureLogging(loglevel):
     """
@@ -631,7 +673,7 @@ def _configureLogging(loglevel):
                        '\t   ERROR\n'
                        '\t   WARNING\n'
                        '\t   INFO\n'
-                       '\t   DEBUG    <- Most verbose'  % loglevel)
+                       '\t   DEBUG    <- Most verbose' % loglevel)
 
     defaultLogger = logging.getLogger('default')
 
@@ -652,6 +694,7 @@ def _configureLogging(loglevel):
 #######################################################
 # Add the user defined command line arguments in this function
 
+
 class SmartFormatter(argparse.HelpFormatter):
 
     def _split_lines(self, text, width):
@@ -659,7 +702,8 @@ class SmartFormatter(argparse.HelpFormatter):
         if text.startswith('R|'):
             return text[2:].splitlines()
         return argparse.HelpFormatter._split_lines(self, text, width)
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
 
 def _command_Line_Options():
     """
@@ -669,13 +713,15 @@ def _command_Line_Options():
     argument parsing examples
     http://docs.python.org/2/library/argparse.html
     """
-    parser = argparse.ArgumentParser(description='OSM Tile Stitcher' + " version " + __version__, formatter_class=SmartFormatter)
+    parser = argparse.ArgumentParser(
+        description='OSM Tile Stitcher' + " version " + __version__, formatter_class=SmartFormatter)
     parser.add_argument("-v", "--version",
                         action="version", default=argparse.SUPPRESS,
                         version=__version__,
                         help="show program's version number and exit")
 
-    loggingGroupOpts = parser.add_argument_group('Logging Options', 'List of optional logging options')
+    loggingGroupOpts = parser.add_argument_group(
+        'Logging Options', 'List of optional logging options')
     loggingGroupOpts.add_argument("-q", "--quiet",
                                   action="store_true",
                                   default=False,
@@ -828,7 +874,7 @@ def _command_Line_Options():
                         action="store",
                         dest="tile_server_provider",
                         metavar="PROVIDER",
-                        default=PROVIDERS.keys()[0],
+                        default=list(PROVIDERS.keys())[0],
                         help="R|Choose one of the predefined tile server providers:\n" + '\n'.join(["   * " + s for s in PROVIDERS]))
     parser.add_argument("-l", "--tile-server-provider-layer",
                         action="store",
@@ -849,7 +895,9 @@ def _command_Line_Options():
 ############### WRITE MAIN PROGRAM ###############
 ##################################################
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def expand_zoom_levels(zoom_levels):
     """
     The zoom levels is a string composed of comma separated integers
@@ -885,7 +933,9 @@ def expand_zoom_levels(zoom_levels):
     # Use the OrderedDict to return unique zoom levels.
     return list(OrderedDict.fromkeys(sorted(expanded_zoom_levels)))
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def validate_arguments(options):
     """
     Validate and prepare the command line arguments.
@@ -903,16 +953,20 @@ def validate_arguments(options):
 
     # Validate the coordinates (we do not need to check if the coordinates are valid numbers. Argparse is already doing this for us)
     if (options.long1 < -180 or options.long1 > 179.999) or (options.long2 < -180 or options.long2 > 179.999):
-        error_and_exit("Longtitude value for 'West' or 'East' should be between -180.0 and 179.999")
+        error_and_exit(
+            "Longtitude value for 'West' or 'East' should be between -180.0 and 179.999")
 
     if (options.lat1 < -85.05112 or options.lat1 > 85.05113) or (options.lat2 < -85.05112 or options.lat2 > 85.05113):
-        error_and_exit("Latitude value for 'North' or 'South' should be between -85.05112 and 85.05113 in the mercator projection.")
+        error_and_exit(
+            "Latitude value for 'North' or 'South' should be between -85.05112 and 85.05113 in the mercator projection.")
 
     if options.long1 > options.long2:
-        error_and_exit("Longtitude 1 (West) coordinate should be smaller than longitude 2 (East).")
+        error_and_exit(
+            "Longtitude 1 (West) coordinate should be smaller than longitude 2 (East).")
 
     if options.lat1 < options.lat2:
-        error_and_exit("Latitude 1 (North) coordinate should be larger than latitude 2 (South).")
+        error_and_exit(
+            "Latitude 1 (North) coordinate should be larger than latitude 2 (South).")
 
     # Check if the custom_osm_server is provided
     # If yes, check if the {z}/{x}/{y} placeholders are present and configure accordingly.
@@ -920,9 +974,11 @@ def validate_arguments(options):
         r = quick_regexp()
         if(not r.search('\{z\}', options.custom_osm_server) or not r.search('\{x\}', options.custom_osm_server) or not r.search('\{y\}', options.custom_osm_server)):
             if options.custom_osm_server.endswith("/"):
-                options.custom_osm_server = options.custom_osm_server + "{z}/{x}/{y}.png"
+                options.custom_osm_server = options.custom_osm_server + \
+                    "{z}/{x}/{y}.png"
             else:
-                options.custom_osm_server = options.custom_osm_server + "/{z}/{x}/{y}.png"
+                options.custom_osm_server = options.custom_osm_server + \
+                    "/{z}/{x}/{y}.png"
 
         options.tile_server_provider = options.custom_osm_server
         options.tile_server_provider_layer = None
@@ -931,7 +987,8 @@ def validate_arguments(options):
     else:
         # If the custom server is not provided, use one of the available providers.
         if not options.tile_server_provider.lower() in [p.lower() for p in PROVIDERS.keys()]:
-            error_and_exit("Provider {} is not defined.".format(options.tile_server_provider))
+            error_and_exit("Provider {} is not defined.".format(
+                options.tile_server_provider))
         else:
             # If we run in this 'else' statement, we know that the provided provider exists.
             # but the user provided string might not be matching exactly the PROVIDER key (it
@@ -943,22 +1000,25 @@ def validate_arguments(options):
                     # If the user provided a layer for this provider, check if the layer exists.
                     # Otherwise, use the first available layer.
                     if options.tile_server_provider_layer and not options.tile_server_provider_layer in [l for l in PROVIDERS[p]['layers']]:
-                        error_and_exit("Layer '{}' is not a valid layer for provider '{}'.".format(options.tile_server_provider_layer, p))
+                        error_and_exit("Layer '{}' is not a valid layer for provider '{}'.".format(
+                            options.tile_server_provider_layer, p))
                     else:
                         if not options.tile_server_provider_layer:
-                            options.tile_server_provider_layer = PROVIDERS[p]['layers'].keys()[0]
+                            options.tile_server_provider_layer = list(
+                                PROVIDERS[p]['layers'].keys())[0]
 
                     # At this point we have already matched the provider, so break the look
                     # (no need to iterate through all of the providers)
                     break
 
-
             # Check if the chosen provider/layer designates the available zoom_levels.
             # If yes, and the user has chosen a non-supported zoom level, exit with an error.
             if 'zoom_levels' in PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]:
-                accepted_zoom_levels = expand_zoom_levels(PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['zoom_levels'])
+                accepted_zoom_levels = expand_zoom_levels(
+                    PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['zoom_levels'])
             else:
-                accepted_zoom_levels = expand_zoom_levels(PROVIDERS[options.tile_server_provider]['zoom_levels'])
+                accepted_zoom_levels = expand_zoom_levels(
+                    PROVIDERS[options.tile_server_provider]['zoom_levels'])
 
             for z in options.zoom_level:
                 if z not in accepted_zoom_levels:
@@ -970,12 +1030,14 @@ def validate_arguments(options):
 
         # Expand the alternative tile_servers for the specific layer
         if 'tile_servers' in PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]:
-            tile_servers_to_expand = PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['tile_servers']
+            tile_servers_to_expand = PROVIDERS[options.tile_server_provider][
+                'layers'][options.tile_server_provider_layer]['tile_servers']
         else:
             tile_servers_to_expand = PROVIDERS[options.tile_server_provider]['tile_servers']
 
         if 'extension' in PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]:
-            layer_extension = PROVIDERS[options.tile_server_provider]['layers'][options.tile_server_provider_layer]['extension']
+            layer_extension = PROVIDERS[options.tile_server_provider][
+                'layers'][options.tile_server_provider_layer]['extension']
         elif 'extension' in PROVIDERS[options.tile_server_provider]:
             layer_extension = PROVIDERS[options.tile_server_provider]['extension']
         else:
@@ -995,7 +1057,8 @@ def validate_arguments(options):
             server_string = re.sub('\{layer\}', layer, server_string)
             # Add the extension in the URL
             if layer_extension:
-                server_string = re.sub('\{ext\}', layer_extension, server_string)
+                server_string = re.sub(
+                    '\{ext\}', layer_extension, server_string)
 
             # If the user hasn't provided a tile format (using original), and if there is no layer_extension,
             # fallback to the default png file format.
@@ -1007,7 +1070,8 @@ def validate_arguments(options):
 
             if r.search('\{alts:([^\}]*)\}', server_string):
                 for alternative in split_strip(r.groups[0]):
-                    options.tile_servers.append(re.sub('\{alts:[^\}]*\}', alternative, server_string))
+                    options.tile_servers.append(
+                        re.sub('\{alts:[^\}]*\}', alternative, server_string))
             else:
                 options.tile_servers.append(server_string)
 
@@ -1024,7 +1088,7 @@ def validate_arguments(options):
                 options.dyn_tile_url = True
 
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 def read_zoom_config(zoom, options):
     """
     This function has to be called after the command line arguments have been validated,
@@ -1036,31 +1100,33 @@ def read_zoom_config(zoom, options):
     Returns the zoom configuration file path and the main configuration section for the
     current zoom level/file
     """
-    zoom_conf = os.path.join(options['project_folder'].keys().pop(), 'zoom-{}.conf'.format(zoom))
+    zoom_conf = os.path.join(
+        list(options['project_folder'].keys()).pop(), 'zoom-{}.conf'.format(zoom))
     main_config_section = "Zoom-{}-Settings".format(zoom)
 
     try:
         with open(zoom_conf):
             LOG.debug("\nReading configuration from file '{}".format(zoom_conf))
-            config = ConfigParser.ConfigParser()
+            config = configparser.ConfigParser()
             config.read(zoom_conf)
 
             if config.has_section(main_config_section):
                 for key, val in options.items():
                     # val.values().pop() returns either 0 or 1, indicating if we
                     # care to check this option.
-                    if val.values().pop():
+                    if list(val.values()).pop():
                         if config.has_option(main_config_section, key):
                             config_val = config.get(main_config_section, key)
-                            LOG.debug("Reading config option '{}' -> '{}'".format(key, config_val))
-                            if config_val != val.keys().pop():
+                            LOG.debug(
+                                "Reading config option '{}' -> '{}'".format(key, config_val))
+                            if config_val != list(val.keys()).pop():
                                 error_and_exit("Option '{0}' in the existing config file is '{1}', but it is '{2}' in\n"
                                                "the current run. Please use the same value for key '{0}', or use a different project folder.".format(
                                                    key,
                                                    config_val,
-                                                   val.keys().pop()
+                                                   list(val.keys()).pop()
                                                )
-                                              )
+                                               )
                         else:
                             error_and_exit("Option '{0}' is defined in the current run, but it doesn't exist in the configuration file '{1}'.\n"
                                            "This option should match since a configuration file exists (indicating that you have "
@@ -1068,7 +1134,7 @@ def read_zoom_config(zoom, options):
                                                key,
                                                zoom_conf
                                            )
-                                          )
+                                           )
 
     except IOError as e:
         # If the error number is 2 (no such file or directory), the conf file does no
@@ -1076,15 +1142,18 @@ def read_zoom_config(zoom, options):
         # zoom level under the specified project_folder. In this case return silently.
         # If the errno is NOT 2, raise an error and exit.
         if not e.errno == 2:
-            LOG.error("IOError: [Errno {}] {}: '{}'".format(e.errno, e.strerror, e.filename))
+            LOG.error("IOError: [Errno {}] {}: '{}'".format(
+                e.errno, e.strerror, e.filename))
             raise
-    except ConfigParser.MissingSectionHeaderError as e:
+    except configparser.MissingSectionHeaderError as e:
         LOG.error('\nNot a valid configuration file {}'.format(e.filename))
         raise
 
     return zoom_conf, main_config_section
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def write_zoom_config(zoom_conf, options, section_to_write):
     """
     Write the options in the configuration file.
@@ -1093,12 +1162,12 @@ def write_zoom_config(zoom_conf, options, section_to_write):
     """
     with open(zoom_conf, 'w') as cfgfile:
         LOG.debug("\nWriting configuration file '{}'".format(zoom_conf))
-        config = ConfigParser.ConfigParser()
+        config = configparser.ConfigParser()
         config.add_section(section_to_write)
 
         for key, val in options.items():
-            LOG.debug("Writing '{}' -> '{}'".format(key, val.keys().pop()))
-            config.set(section_to_write, key, val.keys().pop())
+            LOG.debug("Writing '{}' -> '{}'".format(key, list(val.keys()).pop()))
+            config.set(section_to_write, key, list(val.keys()).pop())
 
         config.write(cfgfile)
 
@@ -1109,7 +1178,7 @@ class stitch_osm_tiles(object):
     Class to stitch OSM tiles
     """
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def __init__(self,
                  zoom,
                  project_folder='maps_project',
@@ -1177,18 +1246,19 @@ class stitch_osm_tiles(object):
         self._tile_height = None
         self._tile_width = None
         self._itemsInProcessing = []
-        self._inDownloadQueue = Queue.Queue()
-        self._outDownloadQueue = Queue.Queue()
-        self._inStitchingQueue = Queue.Queue()
+        self._inDownloadQueue = queue.Queue()
+        self._outDownloadQueue = queue.Queue()
+        self._inStitchingQueue = queue.Queue()
         self._downloadLogFileLock = threading.Lock()
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _get_tile_url(self, counter, x, y):
         """
         Return the tile url by replacing the placeholders
         """
         if self.dyn_tile_url:
-            exec(self.tile_servers[0], locals(), locals())
+            #exec(self.tile_servers[0], locals(), locals())
+            exec(self.tile_servers[0], globals())
             url = dynGetTileUrl(self.zoom, x, y, counter)
         else:
             tile_server = self.tile_servers[counter % len(self.tile_servers)]
@@ -1198,7 +1268,7 @@ class stitch_osm_tiles(object):
 
         return url
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # X and Y
     #      X goes from 0 (left edge is 180 °W) to 2^zoom − 1 (right edge is 180 °E)
     #      Y goes from 0 (top edge is 85.0511 °N) to 2^zoom − 1 (bottom edge is 85.0511 °S) in a "Mercator projection" <- THIS IS VERY IMPORTANT
@@ -1215,11 +1285,12 @@ class stitch_osm_tiles(object):
         lat_rad = math.radians(lat_deg)
         n = 2.0 ** self.zoom
         xtile = int((lon_deg + 180.0) / 360.0 * n)
-        ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
+        ytile = int((1.0 - math.log(math.tan(lat_rad) +
+                                    (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
 
         return (xtile, ytile)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def tilenums2deg(self, xtile, ytile):
         """
         Function to return coordinates given in degress from tile numbers
@@ -1237,8 +1308,7 @@ class stitch_osm_tiles(object):
 
         return (lat_deg, lon_deg)
 
-
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # Get the longtitude and latitude per pixel, based on the global pixel scale of the map.
     # For example, if the zoom level is 0, then only one 256x256 tile compose the complete
     # map. In this case, a y pixel value of 0 will give a latitude of ~-85deg and a y pixel
@@ -1246,6 +1316,7 @@ class stitch_osm_tiles(object):
     # If the zoom is 3, then the whole map is 8x8 tiles, so 2048x2048 pixels. In this case
     # a y pixel value of 0 will give a latitude of ~-85deg and a y pixel value of 20248 will
     # give a latitude of +85.
+
     def pixel2deg(self, xpixel, ypixel, original_tiles_width, original_tiles_height):
         """
         Returns the longtitude and latitude of the of the given x/y pixel
@@ -1254,11 +1325,12 @@ class stitch_osm_tiles(object):
         lon_deg = float(xpixel) / original_tiles_width / n * 360.0 - 180
 
         num_pixel = math.pi - 2.0 * math.pi * ypixel / original_tiles_height / n
-        lat_deg = 180.0 / math.pi * math.atan2(0.5 * (math.exp(num_pixel) - math.exp(-num_pixel)), 1)
+        lat_deg = 180.0 / math.pi * \
+            math.atan2(0.5 * (math.exp(num_pixel) - math.exp(-num_pixel)), 1)
 
         return (lat_deg, lon_deg)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _convert_degrees_to_OZI_deg(self, degrees, orientation):
         """
         Returns a tuple with the absolute value of degrees and orientation
@@ -1277,8 +1349,8 @@ class stitch_osm_tiles(object):
 
         return (int(deg), (deg-int(deg))*60, o)
 
+    # ----------------------------------------------------------------------
 
-    #----------------------------------------------------------------------
     def generate_OZI_map_file(self, filename, extension, width, height, zoom, N, S, W, E):
         """
         This function will generate a map calibration file for OziExplorer
@@ -1315,7 +1387,8 @@ class stitch_osm_tiles(object):
         #       zoom+8 will not be valid. The +8 part is coming for the fact that 256 = 2**8
         """
         latitude_mid_of_tile = S + (N - S)/2
-        MMB1 = 40075017 * math.cos(float(latitude_mid_of_tile) / 180 * math.pi) / 2**(zoom+8)
+        MMB1 = 40075017 * \
+            math.cos(float(latitude_mid_of_tile) / 180 * math.pi) / 2**(zoom+8)
 
         N_OZI = self._convert_degrees_to_OZI_deg(N, 'N')
         S_OZI = self._convert_degrees_to_OZI_deg(S, 'S')
@@ -1352,42 +1425,40 @@ MMPLL,4, {14}, {13}
 MM1B,{18}
 MOP,Map Open Position,0,0
 IWH,Map Image Width/Height,{16},{17}""".format(
-    N_OZI[0], N_OZI[1], N_OZI[2],
-    S_OZI[0], S_OZI[1], S_OZI[2],
-    W_OZI[0], W_OZI[1], W_OZI[2],
-    E_OZI[0], E_OZI[1], E_OZI[2],
-    N, S, W, E,
-    width, height, MMB1,
-    filename, extension,
-    '0'.rjust(5), str(width - 1).rjust(5), str(height - 1).rjust(5)
-    )
+            N_OZI[0], N_OZI[1], N_OZI[2],
+            S_OZI[0], S_OZI[1], S_OZI[2],
+            W_OZI[0], W_OZI[1], W_OZI[2],
+            E_OZI[0], E_OZI[1], E_OZI[2],
+            N, S, W, E,
+            width, height, MMB1,
+            filename, extension,
+            '0'.rjust(5), str(width - 1).rjust(5), str(height - 1).rjust(5)
+        )
 
         return ozi_map_file
 
+    # ----------------------------------------------------------------------
 
-    #----------------------------------------------------------------------
     def _download_tile_worker(self, inQueue, outQueue):
         """
         Downloads the content (should be a tile) of the given url.
         Returns a ([graphicsMagickImageObject, imageblob], None) tuple if the file was downloaded succesfully, or a
         tuple with the error object and a stritg with the type of the error.
         """
+        http = urllib3.PoolManager()
         try:
             while True:
                 # The data received from the queue is tuple (url, download_path)
                 url, download_path = inQueue.get()
 
-                LOG.debug("{} is DOWNLOADING '{}' -> '{}'".format(threading.currentThread().getName(), url, download_path))
-
-                req = urllib2.Request(url)
+                LOG.debug("{} is DOWNLOADING '{}' -> '{}'".format(
+                    threading.currentThread().getName(), url, download_path))
 
                 try:
-                    resp = urllib2.urlopen(req, timeout=20)
-                except urllib2.HTTPError as e:
+                    resp = http.request("GET", url)
+                except urllib3.exceptions.HTTPError as e:
                     # e.code contains the actual error code
                     retval = (e, url, download_path, 'HTTPError')
-                except urllib2.URLError as e:
-                    retval = (e, url, download_path, 'URLError')
                 except socket.timeout as e:
                     retval = (e, url, download_path, 'SocketTimeout')
                 except socket.error as e:
@@ -1396,16 +1467,18 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     retval = (e, url, download_path, e.strerror)
                 else:
                     try:
-                        tile = resp.read()
+                        tile = resp.data
                         try:
                             img = gmImage(pgmagick.Blob(tile))
                             img.write(download_path)
                             retval = ([img, tile], url, download_path, None)
                         except RuntimeError:
                             e = sys.exc_info()[0]
-                            retval = (e, url, download_path, 'UnknownGraphicsMagicError')
+                            retval = (e, url, download_path,
+                                      'UnknownGraphicsMagicError')
                     except socket.error as e:
-                        retval = (e, url, download_path, 'SocketError while reading response')
+                        retval = (e, url, download_path,
+                                  'SocketError while reading response')
 
                 outQueue.put(retval)
                 inQueue.task_done()
@@ -1413,7 +1486,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             inQueue.task_done()
             exit(1)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _process_download_results_worker(self, inQueue, progress_bar, logfile):
         """
         Handle the completed downloads.
@@ -1424,14 +1497,16 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # The data received from the queue is a tuple as return by the 'download_tile_worker' threads
                 result, url, download_path, errorType = inQueue.get()
 
-                LOG.debug("{} is PROCESSING DOWNLOADED file for url '{}'".format(threading.currentThread().getName(), url))
+                LOG.debug("{} is PROCESSING DOWNLOADED file for url '{}'".format(
+                    threading.currentThread().getName(), url))
                 time_now = time.strftime("%a %d %b %Y %H:%M:%S")
 
                 # If there was an error, append in the log file.
                 if errorType is not None:
                     # Use the lock to make sure that threads do not interfere
                     with self._downloadLogFileLock:
-                        logfile.write("{} - ERROR:'{}' -> '{}'\n".format(time_now, url, download_path))
+                        logfile.write(
+                            "{} - ERROR:'{}' -> '{}'\n".format(time_now, url, download_path))
                 else:
                     img, tile = result
 
@@ -1443,7 +1518,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 if progress_bar.currval == 0:
                     if errorType is not None:
                         # If there is an error when trying to download the first tile, just exit.
-                        error_and_exit("The very first tile must be downloaded in order to continue with the rest, but unfortunately there was an error. Please retry.")
+                        error_and_exit(
+                            "The very first tile must be downloaded in order to continue with the rest, but unfortunately there was an error. Please retry.")
                     self._tile_width = img.columns()
                     self._tile_height = img.rows()
 
@@ -1455,14 +1531,15 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 try:
                     self._itemsInProcessing.remove(url)
                 except ValueError:
-                    error_and_exit("Something strange happened...\nURL '{}' has already been removed from the items to be processed.\nPlease retry..".format(url))
+                    error_and_exit(
+                        "Something strange happened...\nURL '{}' has already been removed from the items to be processed.\nPlease retry..".format(url))
 
                 inQueue.task_done()
         except KeyboardInterrupt:
             inQueue.task_done()
             exit(1)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _addToDownloadInputQueue(self, args):
         """
         Helper function to add a url in the input queue for threaded processing
@@ -1479,7 +1556,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         self._inDownloadQueue.put(args)
         self._itemsInProcessing.append(url)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _addToStitchingInputQueue(self, args):
         """
         Helper function to add the needed arguments for threaded stitching
@@ -1495,7 +1572,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         self._inStitchingQueue.put(args)
         self._itemsInProcessing.append(stitch)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def download_tiles(self, tile_west, tile_east, tile_north, tile_south, retry_failed):
         """
         Download tiles for a given zoom level.
@@ -1503,7 +1580,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         of the downloaded files.
         """
         if self.tile_servers is None:
-            raise AssertionError("tile_servers haven't been provided. Cannot download tiles.")
+            raise AssertionError(
+                "tile_servers haven't been provided. Cannot download tiles.")
 
         number_of_horizontal_tiles = (tile_east - tile_west) + 1
         number_of_vertical_tiles = (tile_south - tile_north) + 1
@@ -1519,7 +1597,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         widgets = ['Downloading tile ', progressbar.Counter(format='%{}d'.format(len(str(total_tiles)))), '/{}: '.format(total_tiles),
                    progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-        pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_tiles, fd=myProgressBarFd).start()
+        pbar = progressbar.ProgressBar(
+            widgets=widgets, maxval=total_tiles, fd=myProgressBarFd).start()
 
         # How I implemented the thread pool:
         #   I have an input queue (self._inQueue), an output queue (self._outQueue) and a pool of download threads (the number
@@ -1536,25 +1615,30 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         #   and checks again the length of the list before adding more url's in the input queue.
 
         # Instantiate a thread pool with 'self.parallelDownloadThreads' number of threads
-        instantiate_threadpool('Download-Thread', self.parallelDownloadThreads, self._download_tile_worker, (self._inDownloadQueue, self._outDownloadQueue))
+        instantiate_threadpool('Download-Thread', self.parallelDownloadThreads,
+                               self._download_tile_worker, (self._inDownloadQueue, self._outDownloadQueue))
 
         # Instantiate a single thread to process the results of the downloads
         # The log file has to be opened before we start the threads, because the thread worker is using the log file.
-        downloadLogFile_path = os.path.join(self.project_folder, "zoom-{}-download.log".format(self.zoom))
+        downloadLogFile_path = os.path.join(
+            self.project_folder, "zoom-{}-download.log".format(self.zoom))
         downloadLogFile = open(downloadLogFile_path, 'w')
-        instantiate_threadpool('ProccessDownloaded-Thread', 1, self._process_download_results_worker, (self._outDownloadQueue, pbar, downloadLogFile))
+        instantiate_threadpool('ProccessDownloaded-Thread', 1, self._process_download_results_worker,
+                               (self._outDownloadQueue, pbar, downloadLogFile))
 
         # The counter is mostly used to choose different tile servers if more than one tile servers are provided for the specified provider.
         counter = 1
-        for x in xrange(tile_west, tile_east + 1):
+        for x in range(tile_west, tile_east + 1):
             x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
             if not os.path.isdir(x_path):
                 os.mkdir(x_path)
 
-            for y in xrange(tile_north, tile_south + 1):
-                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
+            for y in range(tile_north, tile_south + 1):
+                y_path = '{}.{}'.format(os.path.join(
+                    x_path, str(y)), self.saved_tile_format)
 
-                LOG.debug("Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
+                LOG.debug(
+                    "Processing tile '{}' (Progress: {}/{})".format(y_path, counter, total_tiles))
 
                 url = self._get_tile_url(counter, x, y)
 
@@ -1603,7 +1687,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             retry = 0
             while filestat.st_size > 0:
                 retry += 1
-                LOG.warn("Some tiles were not downloaded properly. Retry attempt {}...".format(retry))
+                LOG.warn(
+                    "Some tiles were not downloaded properly. Retry attempt {}...".format(retry))
                 list_of_missing_files = {}
                 with self._downloadLogFileLock:
                     with open(downloadLogFile_path) as f:
@@ -1633,7 +1718,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         # Close the log file since we have finished downloading at this point.
         downloadLogFile.close()
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _calculate_max_dimensions_per_stitch(self, tile_west, tile_east, tile_north, tile_south):
         """
         Calculate the max horizontal/vertical dimensions for the final stitches
@@ -1643,8 +1728,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
         # If we do not already know the dimensions of the tiles, then read the dimensions.
         if self._tile_height is None or self._tile_width is None:
-            x_path = os.path.join(self.project_folder, str(self.zoom), str(tile_west))
-            first_y_tile_path = '{}.{}'.format(os.path.join(x_path, str(tile_north)), self.saved_tile_format)
+            x_path = os.path.join(self.project_folder,
+                                  str(self.zoom), str(tile_west))
+            first_y_tile_path = '{}.{}'.format(os.path.join(
+                x_path, str(tile_north)), self.saved_tile_format)
             try:
                 img = gmImage(first_y_tile_path)
                 self._tile_height = img.rows()
@@ -1652,7 +1739,6 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             except RuntimeError as e:
                 LOG.critical(e.message)
                 exit(1)
-
 
         total_vertical_resolution = self._tile_height * number_of_vertical_tiles
         total_horizontal_resolution = self._tile_width * number_of_horizontal_tiles
@@ -1697,7 +1783,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             'horizontal_divide_by': horizontal_divide_by
         }
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _stitch_thumbnail(self, img, thumb_filepath, x_res=144, y_res=144):
         """
         Function to generate a thumbnail from a stitch img.
@@ -1709,15 +1795,17 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         im_w = img.columns()
         im_h = img.rows()
         if im_w > im_h:
-            geo_size = "{}x{}".format(x_res, int(math.ceil((float(im_h) / im_w)) * x_res))
+            geo_size = "{}x{}".format(x_res, int(
+                math.ceil((float(im_h) / im_w)) * x_res))
         else:
-            geo_size = "{}x{}".format(int(math.ceil((float(im_w) / im_h) * y_res)), y_res)
+            geo_size = "{}x{}".format(
+                int(math.ceil((float(im_w) / im_h) * y_res)), y_res)
 
         geometry = pgmagick.Geometry(geo_size)
         img.scale(geometry)
         img.write(thumb_filepath)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _stitch_tile_worker(self, inQueue):
         """
         The function will get a list of input files (the paths of the files)
@@ -1727,7 +1815,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             while True:
                 list_of_files, stitch_filepath, thumb_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, progress_bar = inQueue.get()
 
-                LOG.debug("{} is STITCHING '{}'".format(threading.currentThread().getName(), stitch_filepath))
+                LOG.debug("{} is STITCHING '{}'".format(
+                    threading.currentThread().getName(), stitch_filepath))
 
                 # Prepare the montage command to execute on command line.
                 # Graphicsmagick has a bug (at least in the version that I am using) and when doing the montage
@@ -1742,19 +1831,24 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # Run the montage, but do not save into a file! Instead, redirect a png output to stdout. Since the stdout is binary
                 # data and stored in memory, we use pgmagick.Blob to load it in a pgmagick object and crop it later without having to
                 # write a intermediate file on hard disk in between.
-                montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles), '-background', 'none', '-geometry', '+0+0', 'png:-'])
+                montage_cmd.extend(['-tile', '{}x{}'.format(x_tiles, y_tiles),
+                                    '-background', 'none', '-geometry', '+0+0', 'png:-'])
 
                 # Stitch the images here
                 montage = executeCommand(montage_cmd)
 
                 if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
-                    LOG.error("ERROR: Could not generate stitch file '{}.".format(stitch_filepath))
+                    LOG.error("ERROR: Could not generate stitch file '{}.".format(
+                        stitch_filepath))
                 else:
                     # Load the stitched image and first crop and save it....
-                    LOG.debug("Cropping tile '{}' left, top: {}, {}".format(stitch_filepath, crop_left, crop_top))
+                    LOG.debug("Cropping tile '{}' left, top: {}, {}".format(
+                        stitch_filepath, crop_left, crop_top))
                     # Use a Blob to load the output of the montage command we executed earlier.
-                    img = gmImage(pgmagick.Blob(montage.getStdout(getList=False)))
-                    img.crop('{}x{}+{}+{}'.format(x_res, y_res, crop_left, crop_top))
+                    img = gmImage(pgmagick.Blob(
+                        montage.getStdout(getList=False, decode=False)))
+                    img.crop('{}x{}+{}+{}'.format(x_res,
+                                                  y_res, crop_left, crop_top))
                     LOG.debug("Saving tile '{}'".format(stitch_filepath))
                     img.write(stitch_filepath)
 
@@ -1773,19 +1867,23 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             inQueue.task_done()
             exit(1)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def stitch_tiles(self, tile_west, tile_east, tile_north, tile_south):
         """
         Stitch tiles for a given zoom level in the given max dimensions
         """
-        dimensions = self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+        dimensions = self._calculate_max_dimensions_per_stitch(
+            tile_west, tile_east, tile_north, tile_south)
 
-        total_stitches = dimensions['vertical_divide_by'] * dimensions['horizontal_divide_by']
+        total_stitches = dimensions['vertical_divide_by'] * \
+            dimensions['horizontal_divide_by']
 
         # Create a thread pool with 'self.parallelStitchingThreads' number of threads for the stitching.
-        instantiate_threadpool('Stitching-Thread', self.parallelStitchingThreads, self._stitch_tile_worker, (self._inStitchingQueue, ))
+        instantiate_threadpool('Stitching-Thread', self.parallelStitchingThreads,
+                               self._stitch_tile_worker, (self._inStitchingQueue, ))
 
-        stitches_path = os.path.join(self.project_folder, "stitched_maps", str(zoom))
+        stitches_path = os.path.join(
+            self.project_folder, "stitched_maps", str(zoom))
         thumbnails_path = os.path.join(stitches_path, "thumbs")
         if not os.path.isdir(stitches_path):
             os.makedirs(stitches_path)
@@ -1804,8 +1902,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         widgets = ['Stitching tile ', progressbar.Counter(format='%{}d'.format(len(str(total_stitches)))), '/{}: '.format(total_stitches),
                    progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-        pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_stitches, fd=myProgressBarFd).start()
-
+        pbar = progressbar.ProgressBar(
+            widgets=widgets, maxval=total_stitches, fd=myProgressBarFd).start()
 
         # If we have a matrix of files like the following one,
         #
@@ -1828,25 +1926,34 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         # asked to make 3x2 tiles for each stitch.
         total_number_of_horizontal_tiles = (tile_east + 1) - tile_west
         total_number_of_vertical_tiles = (tile_south + 1) - tile_north
-        horizontal_tiles_per_stitch = float(total_number_of_horizontal_tiles) / dimensions['horizontal_divide_by']
-        vertical_tiles_per_stitch = float(total_number_of_vertical_tiles) / dimensions['vertical_divide_by']
+        horizontal_tiles_per_stitch = float(
+            total_number_of_horizontal_tiles) / dimensions['horizontal_divide_by']
+        vertical_tiles_per_stitch = float(
+            total_number_of_vertical_tiles) / dimensions['vertical_divide_by']
 
         # This array stores all of the thumbnail filenames of the final stitches, in order to create a final index image in the end
         all_thumb_stitches = []
-        for y in xrange(dimensions['vertical_divide_by']):
-            for x in xrange(dimensions['horizontal_divide_by']):
+        for y in range(dimensions['vertical_divide_by']):
+            for x in range(dimensions['horizontal_divide_by']):
                 # The stitch_key must contain the final image extension
-                stitch_key = '{}_{}.{}'.format(y, x, self.saved_stitched_tile_format)
+                stitch_key = '{}_{}.{}'.format(
+                    y, x, self.saved_stitched_tile_format)
 
                 # The files_stitch array stores the filename path of all the original images to be stitched in the current stitch.
                 files_stitch = []
 
-                start_x_tile = int(tile_west + math.floor(x * horizontal_tiles_per_stitch))
-                start_y_tile = int(tile_north + math.floor(y * vertical_tiles_per_stitch))
+                start_x_tile = int(
+                    tile_west + math.floor(x * horizontal_tiles_per_stitch))
+                start_y_tile = int(
+                    tile_north + math.floor(y * vertical_tiles_per_stitch))
 
                 # Crop the stitched tiles as needed so that we do not have overlaps and make sure that each tile fits the given dimensions.
-                crop_from_left = x * dimensions['horizontal_resolution_per_stitch'] - self._tile_width * (start_x_tile - tile_west)
-                crop_from_top = y * dimensions['vertical_resolution_per_stitch'] - self._tile_height * (start_y_tile - tile_north)
+                crop_from_left = x * \
+                    dimensions['horizontal_resolution_per_stitch'] - \
+                    self._tile_width * (start_x_tile - tile_west)
+                crop_from_top = y * \
+                    dimensions['vertical_resolution_per_stitch'] - \
+                    self._tile_height * (start_y_tile - tile_north)
 
                 # The variables horizontal_tiles_per_stitch and vertical_tiles_per_stitch are float numbers, since the stitches
                 # may need to be composed out of e.g. 25 tiles + 64 pixels. This is 25.25 tiles if each tile is 256x256 pixels.
@@ -1858,15 +1965,19 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # before and one after. If that's the case, the crop_from_left variable has the value 256 - 32 = 224, and since
                 # these 224 pixels will be cropped from the start tile, we need to add them in the horizontal_tiles_per_stitch
                 # with the 'float(crop_from_left) / self._tile_width'.
-                end_x_tile = int(start_x_tile + math.ceil(horizontal_tiles_per_stitch + float(crop_from_left) / self._tile_width))
-                end_y_tile = int(start_y_tile + math.ceil(vertical_tiles_per_stitch + float(crop_from_top) / self._tile_height))
+                end_x_tile = int(start_x_tile + math.ceil(
+                    horizontal_tiles_per_stitch + float(crop_from_left) / self._tile_width))
+                end_y_tile = int(
+                    start_y_tile + math.ceil(vertical_tiles_per_stitch + float(crop_from_top) / self._tile_height))
 
                 # The end tiles are excluded... So for the current stitch, we
                 # actually process from 'start_x_tile' until 'end_x_tile - 1'
-                for y_orig_tile in xrange(start_y_tile, end_y_tile):
-                    for x_orig_tile in xrange(start_x_tile, end_x_tile):
-                        x_path = os.path.join(self.project_folder, str(self.zoom), str(x_orig_tile))
-                        y_path = '{}.{}'.format(os.path.join(x_path, str(y_orig_tile)), self.saved_tile_format)
+                for y_orig_tile in range(start_y_tile, end_y_tile):
+                    for x_orig_tile in range(start_x_tile, end_x_tile):
+                        x_path = os.path.join(self.project_folder, str(
+                            self.zoom), str(x_orig_tile))
+                        y_path = '{}.{}'.format(os.path.join(
+                            x_path, str(y_orig_tile)), self.saved_tile_format)
 
                         files_stitch.append(y_path)
 
@@ -1874,6 +1985,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # The command line should look like this: ''gm montage 2x2 ${files} -background none -geometry +0+0 file.png
                 path_to_stitch = os.path.join(stitches_path, stitch_key)
                 path_to_thumb = os.path.join(thumbnails_path, stitch_key)
+
                 try:
                     img = gmImage(path_to_stitch)
 
@@ -1900,7 +2012,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 # Add the thumb to the all_thumb_stitches array
                 all_thumb_stitches.append(path_to_thumb)
 
-                LOG.debug("Processing stitch '{}' (Progress: {}/{})".format(stitch_key, counter, dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']))
+                LOG.debug("Processing stitch '{}' (Progress: {}/{})".format(stitch_key, counter,
+                                                                            dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']))
                 LOG.debug("Composed by:\n"
                           "X tiles {}-{}\n"
                           "Y tiles {}-{}".format(start_x_tile,
@@ -1921,36 +2034,45 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         if not os.path.isfile(index_file):
             montage_cmd = ['gm', 'montage']
             montage_cmd.extend(all_thumb_stitches)
-            montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'], dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
+            montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'],
+                                                        dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
             montage.execute(montage_cmd)
 
         if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
-            LOG.error("ERROR: Could not generate image index '{}".format(index_file))
+            LOG.error(
+                "ERROR: Could not generate image index '{}".format(index_file))
         else:
-            LOG.info("Image index '{}' was generated successfully.".format(index_file))
+            LOG.info(
+                "Image index '{}' was generated successfully.".format(index_file))
 
         # Make one more index with labels
         index_file = '{}-index-labeled.png'.format(stitches_path)
         if not os.path.isfile(index_file):
-            montage_cmd = ['gm', 'montage', '-draw', 'gravity South fill red stroke red text 0,7 "%f"', '-pointsize', '16']
+            montage_cmd = ['gm', 'montage', '-draw',
+                           'gravity South fill red stroke red text 0,7 "%f"', '-pointsize', '16']
             montage_cmd.extend(all_thumb_stitches)
-            montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'], dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
+            montage_cmd.extend(['-tile', '{}x{}'.format(dimensions['horizontal_divide_by'],
+                                                        dimensions['vertical_divide_by']), '-background', 'white', '-geometry', '+1+1', index_file])
             montage.execute(montage_cmd)
 
         if montage.getReturnCode() != 0 and montage.getReturnCode() is not None:
-            LOG.error("ERROR: Could not generate image index '{}".format(index_file))
+            LOG.error(
+                "ERROR: Could not generate image index '{}".format(index_file))
         else:
-            LOG.info("Image index '{}' was generated successfully.".format(index_file))
+            LOG.info(
+                "Image index '{}' was generated successfully.".format(index_file))
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def calibrate_tiles(self, tile_west, tile_east, tile_north, tile_south):
         """
         Calibrate stitched tiles for a given zoom level in the given max dimensions
         """
 
-        dimensions = self._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+        dimensions = self._calculate_max_dimensions_per_stitch(
+            tile_west, tile_east, tile_north, tile_south)
 
-        total_stitches = dimensions['vertical_divide_by'] * dimensions['horizontal_divide_by']
+        total_stitches = dimensions['vertical_divide_by'] * \
+            dimensions['horizontal_divide_by']
         myProgressBarFd = sys.stderr
         # If log level is set to 1000 (logging is disabled), or DEBUG, then redirect
         # the progress bar to /dev/null (use os.devnull to support windows as well)
@@ -1960,19 +2082,22 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         widgets = ['Calibrating stitches: ', progressbar.Counter(format='%{}d'.format(len(str(total_stitches)))), '/{}: '.format(total_stitches),
                    progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-        pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_stitches, fd=myProgressBarFd).start()
+        pbar = progressbar.ProgressBar(
+            widgets=widgets, maxval=total_stitches, fd=myProgressBarFd).start()
 
-        stitches_path = os.path.join(self.project_folder, "stitched_maps", str(zoom))
+        stitches_path = os.path.join(
+            self.project_folder, "stitched_maps", str(zoom))
         if not os.path.isdir(stitches_path):
             os.makedirs(stitches_path)
 
-        for y in xrange(dimensions['vertical_divide_by']):
-            for x in xrange(dimensions['horizontal_divide_by']):
+        for y in range(dimensions['vertical_divide_by']):
+            for x in range(dimensions['horizontal_divide_by']):
                 # The filename and extension is used in the ozi .map file, to find the matching image map
                 filename = '{}_{}'.format(y, x)
                 extension = self.saved_stitched_tile_format
 
-                map_file = os.path.join(stitches_path, '{}.{}'.format(filename, 'map'))
+                map_file = os.path.join(
+                    stitches_path, '{}.{}'.format(filename, 'map'))
 
                 # First find the corresponding pixels in the global map.
                 # Use +1 because if tile_west = 0, then this will return pixel number 0. while it should return pixel 1
@@ -1980,19 +2105,27 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 WesternMost_xpixel = tile_west * self._tile_width + 1
                 NorthernMost_ypixel = tile_north * self._tile_height + 1
 
-                W_xpixel = WesternMost_xpixel + x * dimensions['horizontal_resolution_per_stitch']
-                E_xpixel = WesternMost_xpixel + (x + 1) * dimensions['horizontal_resolution_per_stitch'] - 1
-                N_ypixel = NorthernMost_ypixel + y * dimensions['vertical_resolution_per_stitch']
-                S_ypixel = NorthernMost_ypixel + (y + 1) * dimensions['vertical_resolution_per_stitch'] - 1
+                W_xpixel = WesternMost_xpixel + x * \
+                    dimensions['horizontal_resolution_per_stitch']
+                E_xpixel = WesternMost_xpixel + \
+                    (x + 1) * \
+                    dimensions['horizontal_resolution_per_stitch'] - 1
+                N_ypixel = NorthernMost_ypixel + y * \
+                    dimensions['vertical_resolution_per_stitch']
+                S_ypixel = NorthernMost_ypixel + \
+                    (y + 1) * dimensions['vertical_resolution_per_stitch'] - 1
 
                 # Then use the pixel2deg function to get the longtitude and latitude of the stitched tile
-                N_deg, W_deg = self.pixel2deg(W_xpixel, N_ypixel, self._tile_width, self._tile_height)
-                S_deg, E_deg = self.pixel2deg(E_xpixel, S_ypixel, self._tile_width, self._tile_height)
+                N_deg, W_deg = self.pixel2deg(
+                    W_xpixel, N_ypixel, self._tile_width, self._tile_height)
+                S_deg, E_deg = self.pixel2deg(
+                    E_xpixel, S_ypixel, self._tile_width, self._tile_height)
 
                 pbar.currval += 1
                 pbar.update(pbar.currval)
 
-                LOG.debug("Calibrating file '{}.{}' -> '{}'".format(filename, extension, map_file))
+                LOG.debug(
+                    "Calibrating file '{}.{}' -> '{}'".format(filename, extension, map_file))
 
                 # And finally we save the map file in a file.
                 with open(map_file, 'w+') as f:
@@ -2009,7 +2142,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
 
         pbar.finish()
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def prepareMaverickTiles(self, tile_west, tile_east, tile_north, tile_south):
         """
         Generates .tile tiles for Maverick
@@ -2063,31 +2196,35 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 if not os.path.isdir(maverick_folder):
                     os.makedirs(maverick_folder)
                 with open(os.path.join(maverick_folder, 'mapserver.txt'), 'w') as mapserverFile:
-                    mapserverFile.write("{}|{}|18|1\n".format(self.tile_servers[0], self.saved_tile_format))
+                    mapserverFile.write("{}|{}|18|1\n".format(
+                        self.tile_servers[0], self.saved_tile_format))
 
-        for x in xrange(tile_west, tile_east + 1):
+        for x in range(tile_west, tile_east + 1):
             x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
             if not os.path.isdir(x_path):
                 os.mkdir(x_path)
 
-            x_path_maverick = os.path.join(maverick_folder, str(self.zoom), str(x))
+            x_path_maverick = os.path.join(
+                maverick_folder, str(self.zoom), str(x))
             if not os.path.isdir(x_path_maverick):
                 os.makedirs(x_path_maverick)
 
-            for y in xrange(tile_north, tile_south + 1):
-                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
-                y_path_maverick = '{}.{}.tile'.format(os.path.join(x_path_maverick, str(y)), self.saved_tile_format)
+            for y in range(tile_north, tile_south + 1):
+                y_path = '{}.{}'.format(os.path.join(
+                    x_path, str(y)), self.saved_tile_format)
+                y_path_maverick = '{}.{}.tile'.format(os.path.join(
+                    x_path_maverick, str(y)), self.saved_tile_format)
 
                 if not os.path.isfile(y_path):
-                    LOG.warn("File {} is missing. Maverick tile for this file will not be generated.".format(y_path))
+                    LOG.warn(
+                        "File {} is missing. Maverick tile for this file will not be generated.".format(y_path))
                 else:
                     # Only copy the file if it doesn't exist already.
                     if not os.path.isfile(y_path_maverick):
                         shutil.copy2(y_path, y_path_maverick)
 
+    # ----------------------------------------------------------------------
 
-
-    #----------------------------------------------------------------------
     def prepareOsmandTiles(self, tile_west, tile_east, tile_north, tile_south):
         """
         Generates .tile tiles for OsmAnd
@@ -2098,7 +2235,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         """
         osmand_folder = os.path.join(self.project_folder, 'osmand')
 
-        for x in xrange(tile_west, tile_east + 1):
+        for x in range(tile_west, tile_east + 1):
             x_path = os.path.join(self.project_folder, str(self.zoom), str(x))
             if not os.path.isdir(x_path):
                 os.mkdir(x_path)
@@ -2107,18 +2244,23 @@ IWH,Map Image Width/Height,{16},{17}""".format(
             if not os.path.isdir(x_path_osmand):
                 os.makedirs(x_path_osmand)
 
-            for y in xrange(tile_north, tile_south + 1):
-                y_path = '{}.{}'.format(os.path.join(x_path, str(y)), self.saved_tile_format)
-                y_path_osmand = '{}png.tile'.format(os.path.join(x_path_osmand, str(y)), self.saved_tile_format)
+            for y in range(tile_north, tile_south + 1):
+                y_path = '{}.{}'.format(os.path.join(
+                    x_path, str(y)), self.saved_tile_format)
+                y_path_osmand = '{}png.tile'.format(os.path.join(
+                    x_path_osmand, str(y)), self.saved_tile_format)
 
                 if not os.path.isfile(y_path):
-                    LOG.warn("File {} is missing. OsmAnd tile for this file will not be generated.".format(y_path))
+                    LOG.warn(
+                        "File {} is missing. OsmAnd tile for this file will not be generated.".format(y_path))
                 else:
                     # Only copy the file if it doesn't exist already.
                     if not os.path.isfile(y_path_osmand):
                         shutil.copy2(y_path, y_path_osmand)
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def DrawableMapNorth(x, y, size=100, anchor='lowerleft'):
     """
     x: An integer for x placement
@@ -2153,7 +2295,8 @@ def DrawableMapNorth(x, y, size=100, anchor='lowerleft'):
     #              1 10 8  7
     #
     """
-    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft',
+                   'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
         print("Wrong Anchor value. Available values are:\n{}".format(anchor_vals))
         raise KeyError
@@ -2213,12 +2356,13 @@ def DrawableMapNorth(x, y, size=100, anchor='lowerleft'):
         anchor_x = n_width
         anchor_y = -n_height / 2
 
-
-    x_multipliers = [x_p[1], x_p[1], x_p[2], x_p[3], x_p[3], x_p[4], x_p[4], x_p[3], x_p[2], x_p[2]]
-    y_multipliers = [y_p[1], y_p[4], y_p[4], y_p[3], y_p[4], y_p[4], y_p[1], y_p[1], y_p[2], y_p[1]]
+    x_multipliers = [x_p[1], x_p[1], x_p[2], x_p[3],
+                     x_p[3], x_p[4], x_p[4], x_p[3], x_p[2], x_p[2]]
+    y_multipliers = [y_p[1], y_p[4], y_p[4], y_p[3],
+                     y_p[4], y_p[4], y_p[1], y_p[1], y_p[2], y_p[1]]
     subtract_x = 0
     subtract_y = 0
-    for i in xrange(10):
+    for i in range(10):
         x_point = size * x_multipliers[i]
         y_point = size * y_multipliers[i]
         if i == 0:
@@ -2232,12 +2376,15 @@ def DrawableMapNorth(x, y, size=100, anchor='lowerleft'):
 
     return north
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
     """
     Draw a compass on the map of 'radius' size (the actual size is radius * 2)
     """
-    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft',
+                   'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
         print("Wrong Anchor value. Available values are:\n{}".format(anchor_vals))
         raise KeyError
@@ -2258,7 +2405,8 @@ def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
         2: (0, -1)
     }
 
-    n_radius = radius * abs(central_point['x'] - central_point['x'] + offsets[2][1])
+    n_radius = radius * \
+        abs(central_point['x'] - central_point['x'] + offsets[2][1])
 
     if anchor == 'lowerleft':
         anchor_x = 0
@@ -2299,7 +2447,8 @@ def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
     r = int(radius * 0.55)
     circle_thickness = int(radius / 15)
     compass.append(pgmagick.DrawableStrokeWidth(circle_thickness))
-    compass.append(pgmagick.DrawableCircle(x_p_center, y_p_center, x_p_center + r, y_p_center + r))
+    compass.append(pgmagick.DrawableCircle(
+        x_p_center, y_p_center, x_p_center + r, y_p_center + r))
 
     # Change back to a thin stroke for the rest
     compass.append(pgmagick.DrawableStrokeWidth(1))
@@ -2315,17 +2464,25 @@ def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
     for i in (0, 1, 2, 3):
         for j in (1, 2):
             if i == 0:
-                x_p = radius * (central_point['x'] - offsets[j][0]) + x + anchor_x
-                y_p = radius * (central_point['y'] + offsets[j][1]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] - offsets[j][0]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] + offsets[j][1]) + y + anchor_y
             elif i == 1:
-                x_p = radius * (central_point['x'] - offsets[j][1]) + x + anchor_x
-                y_p = radius * (central_point['y'] - offsets[j][0]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] - offsets[j][1]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] - offsets[j][0]) + y + anchor_y
             elif i == 2:
-                x_p = radius * (central_point['x'] + offsets[j][0]) + x + anchor_x
-                y_p = radius * (central_point['y'] - offsets[j][1]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] + offsets[j][0]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] - offsets[j][1]) + y + anchor_y
             elif i == 3:
-                x_p = radius * (central_point['x'] + offsets[j][1]) + x + anchor_x
-                y_p = radius * (central_point['y'] + offsets[j][0]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] + offsets[j][1]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] + offsets[j][0]) + y + anchor_y
 
             coords.append(pgmagick.Coordinate(x_p, y_p))
         coords.append(pgmagick.Coordinate(x_p_center, y_p_center))
@@ -2339,17 +2496,25 @@ def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
     for i in (0, 1, 2, 3):
         for j in (1, 2):
             if i == 0:
-                x_p = radius * (central_point['x'] + offsets[j][0]) + x + anchor_x
-                y_p = radius * (central_point['y'] + offsets[j][1]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] + offsets[j][0]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] + offsets[j][1]) + y + anchor_y
             elif i == 1:
-                x_p = radius * (central_point['x'] - offsets[j][1]) + x + anchor_x
-                y_p = radius * (central_point['y'] + offsets[j][0]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] - offsets[j][1]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] + offsets[j][0]) + y + anchor_y
             elif i == 2:
-                x_p = radius * (central_point['x'] - offsets[j][0]) + x + anchor_x
-                y_p = radius * (central_point['y'] - offsets[j][1]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] - offsets[j][0]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] - offsets[j][1]) + y + anchor_y
             elif i == 3:
-                x_p = radius * (central_point['x'] + offsets[j][1]) + x + anchor_x
-                y_p = radius * (central_point['y'] - offsets[j][0]) + y + anchor_y
+                x_p = radius * \
+                    (central_point['x'] + offsets[j][1]) + x + anchor_x
+                y_p = radius * \
+                    (central_point['y'] - offsets[j][0]) + y + anchor_y
 
             coords.append(pgmagick.Coordinate(x_p, y_p))
         coords.append(pgmagick.Coordinate(x_p_center, y_p_center))
@@ -2357,7 +2522,9 @@ def DrawableMapCompass(x, y, radius=100, anchor='lowerleft'):
 
     return compass
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def DrawableMapGrid(map_width, map_height, canvas_margin, thickness=2, x_grid_by=256, y_grid_by=256):
     """
     Draw the Grid for the given map width and height.
@@ -2377,14 +2544,16 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness=2, x_grid_by
     """
     grid = pgmagick.DrawableList()
 
-    x_grid_by = x_grid_by + (map_width % x_grid_by / float(int(map_width / x_grid_by)))
-    y_grid_by = y_grid_by + (map_height % y_grid_by / float(int(map_height / y_grid_by)))
+    x_grid_by = x_grid_by + (map_width % x_grid_by /
+                             float(int(map_width / x_grid_by)))
+    y_grid_by = y_grid_by + (map_height % y_grid_by /
+                             float(int(map_height / y_grid_by)))
 
     for central_x_pos in xfrange(canvas_margin, map_width + canvas_margin + 1, x_grid_by):
         # central_x is a float, but we want an integer in order to draw in a pixel,
         # so round the value of central_x to the nearest integer
         central_x_pos = round(central_x_pos)
-        for t in xrange(thickness):
+        for t in range(thickness):
             x = central_x_pos - int(thickness / 2) + t
             y1 = 0
             y2 = map_height + 2 * canvas_margin
@@ -2392,7 +2561,7 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness=2, x_grid_by
 
     for central_y_pos in xfrange(canvas_margin, map_height + canvas_margin + 1, y_grid_by):
         central_y_pos = round(central_y_pos)
-        for t in xrange(thickness):
+        for t in range(thickness):
             y = central_y_pos - int(thickness / 2) + t
             x1 = 0
             x2 = map_width + 2 * canvas_margin
@@ -2400,7 +2569,9 @@ def DrawableMapGrid(map_width, map_height, canvas_margin, thickness=2, x_grid_by
 
     return grid
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize=80, x_grid_by=256, y_grid_by=256):
     """
     Draw the labels on the sides of the canvas
@@ -2412,9 +2583,11 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize=80, x_grid_
     labels = pgmagick.DrawableList()
 
     fontname = 'FreeSans'
-    labels.append(pgmagick.DrawableFont(fontname, pgmagick.StyleType.NormalStyle, 600, pgmagick.StretchType.NormalStretch))
+    labels.append(pgmagick.DrawableFont(
+        fontname, pgmagick.StyleType.NormalStyle, 600, pgmagick.StretchType.NormalStretch))
     labels.append(pgmagick.DrawablePointSize(fontsize))
-    labels.append(pgmagick.DrawableGravity(pgmagick.GravityType.NorthWestGravity))
+    labels.append(pgmagick.DrawableGravity(
+        pgmagick.GravityType.NorthWestGravity))
 
     # Use an image object, in order to make use of the fontmetrics capability.
     text = pgmagick.Image()
@@ -2422,20 +2595,23 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize=80, x_grid_
     text.font(fontname)
     fontmetric = pgmagick.TypeMetric()
 
-    x_grid_by = x_grid_by + (map_width % x_grid_by / float(int(map_width / x_grid_by)))
-    y_grid_by = y_grid_by + (map_height % y_grid_by / float(int(map_height / y_grid_by)))
+    x_grid_by = x_grid_by + (map_width % x_grid_by /
+                             float(int(map_width / x_grid_by)))
+    y_grid_by = y_grid_by + (map_height % y_grid_by /
+                             float(int(map_height / y_grid_by)))
 
-    ascii_chr = [65] # ASCII 65 = A
+    ascii_chr = [65]  # ASCII 65 = A
     for x in xfrange(canvas_margin, map_width + canvas_margin, x_grid_by):
         x = round(x)
         lab = ''.join(chr(i) for i in ascii_chr)
         pgmagick.Image.fontTypeMetrics(text, lab, fontmetric)
-        labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2), canvas_margin - 30, lab))
+        labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) -
+                                            int(fontmetric.textWidth() / 2), canvas_margin - 30, lab))
         labels.append(pgmagick.DrawableText(x + int(x_grid_by / 2) - int(fontmetric.textWidth() / 2),
                                             map_height + canvas_margin + 30 + (fontmetric.ascent() + fontmetric.descent()), lab))
         # If we reached Z, start counting from AA, AB, AC etc...
         # This if so far it will only work until ZZ which I think is more than enough.
-        if ascii_chr[len(ascii_chr) - 1] < 90: # ASCII 90 = Z
+        if ascii_chr[len(ascii_chr) - 1] < 90:  # ASCII 90 = Z
             ascii_chr[len(ascii_chr) - 1] += 1
         else:
             if len(ascii_chr) == 1:
@@ -2458,7 +2634,9 @@ def DrawableMapLabels(map_width, map_height, canvas_margin, fontsize=80, x_grid_
 
     return labels
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='lowerleft'):
     """
     The ruler size defines the thickness of the ruler.
@@ -2475,12 +2653,14 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
             tiles of different size
     #       zoom+8 will not be valid. The +8 part is coming for the fact that 256 = 2**8
     """
-    anchor_vals = ('lowerleft', 'lowerright', 'upperleft', 'upperright', 'middle', 'bottom', 'top', 'left', 'right')
+    anchor_vals = ('lowerleft', 'lowerright', 'upperleft',
+                   'upperright', 'middle', 'bottom', 'top', 'left', 'right')
     if anchor not in anchor_vals:
         print("Wrong Anchor value. Available values are:\n{}".format(anchor_vals))
         raise KeyError
 
-    horizontalMetersPerPixel = 40075017 * math.cos(latitude_mid_of_tile / 180.0 * math.pi) / 2**(zoom+8)
+    horizontalMetersPerPixel = 40075017 * \
+        math.cos(latitude_mid_of_tile / 180.0 * math.pi) / 2**(zoom+8)
 
     ruler = pgmagick.DrawableList()
     black = pgmagick.Color('black')
@@ -2488,9 +2668,11 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
 
     fontname = 'FreeSans'
     fontsize = rulersize
-    ruler.append(pgmagick.DrawableFont(fontname, pgmagick.StyleType.NormalStyle, 100, pgmagick.StretchType.NormalStretch))
+    ruler.append(pgmagick.DrawableFont(
+        fontname, pgmagick.StyleType.NormalStyle, 100, pgmagick.StretchType.NormalStretch))
     ruler.append(pgmagick.DrawablePointSize(fontsize))
-    ruler.append(pgmagick.DrawableGravity(pgmagick.GravityType.NorthWestGravity))
+    ruler.append(pgmagick.DrawableGravity(
+        pgmagick.GravityType.NorthWestGravity))
 
     # Use an image object, in order to make use of the fontmetrics capability.
     text = pgmagick.Image()
@@ -2512,7 +2694,7 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
     m_lab = "m"
     len_m = len(str(m))
 
-    if  m > 1000:
+    if m > 1000:
         # If the half length of the width is more than 1000 meters,
         # round to the nearest major number in km.
         m = int(round(m, -len_m + 1))
@@ -2540,9 +2722,11 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
     if m_lab == 'm':
         actual_pixels_for_half_width = horizontalMetersPerPixel * half_width
     elif m_lab == 'km':
-        actual_pixels_for_half_width = (horizontalMetersPerPixel / 1000) * half_width
+        actual_pixels_for_half_width = (
+            horizontalMetersPerPixel / 1000) * half_width
 
-    reformed_half_width = int(round((m / actual_pixels_for_half_width) * half_width))
+    reformed_half_width = int(
+        round((m / actual_pixels_for_half_width) * half_width))
     width = reformed_half_width * 2
 
     # The height variable holds only the height of the bar.
@@ -2551,7 +2735,8 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
     #
     # If I want to be 100% accurate, I have to take into account the text on the right and left
     # of the bar and change the width accordingly as well, but that's not much so I do not bother now.
-    anchor_height = height + (3.5 * height / 4) + max_text_height.textHeight() - max_text_height.ascent() - max_text_height.descent()
+    anchor_height = height + (3.5 * height / 4) + max_text_height.textHeight() - \
+        max_text_height.ascent() - max_text_height.descent()
     if anchor == 'lowerleft':
         anchor_x = 0
         anchor_y = height
@@ -2626,7 +2811,9 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
 
     return ruler
 
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+
+
 def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
     """
     This function will generate a stitched tile with labeled grid, a compass and a scale ruler.
@@ -2663,25 +2850,30 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
 
     # Add a compass widget
     compass_size = 110
-    compass_coords = (canvas.columns() - canvas_margin_px - 20, canvas_margin_px + 80)
-    compass = DrawableMapCompass(compass_coords[0], compass_coords[1], compass_size, anchor='upperright')
+    compass_coords = (canvas.columns() - canvas_margin_px -
+                      20, canvas_margin_px + 80)
+    compass = DrawableMapCompass(
+        compass_coords[0], compass_coords[1], compass_size, anchor='upperright')
     canvas.draw(compass)
 
     # Add an 'N' on top of the compass to indicate where the north is.
     north_size = int(compass_size / 2.5)
     north_coords = (compass_coords[0] - compass_size, compass_coords[1] - 10)
-    north = DrawableMapNorth(north_coords[0], north_coords[1], north_size, anchor='bottom')
+    north = DrawableMapNorth(
+        north_coords[0], north_coords[1], north_size, anchor='bottom')
     canvas.draw(north)
 
     # Add a ruler widget to indicate the scale of the map.
     latMidTile = S + (N - S) / 2.0
-    ruler = DrawableScaleRuler(canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, latMidTile, zoom, 35)
+    ruler = DrawableScaleRuler(
+        canvas_margin_px + 100, img.rows() + canvas_margin_px - 100, latMidTile, zoom, 35)
     canvas.draw(ruler)
 
     # Save the file in the outputFile
     canvas.write(outputFile)
 
-#----------------------------------------------------------------------
+
+# ----------------------------------------------------------------------
 if __name__ == '__main__':
     """
     Write the main program here
@@ -2700,7 +2892,7 @@ if __name__ == '__main__':
     LOG.info("Welcome to OSM Tile Stitcher v" + str(__version__))
     LOG.info("----------------------------------\n")
 
-    #print options
+    # print options
     try:
 
         for zoom in options.zoom_level:
@@ -2726,8 +2918,10 @@ if __name__ == '__main__':
             #       function (or it can be two different functions) should be working either with coords
             #       (and the coords can be converted to tile number with the deg2tilenums) or by directly
             #       choosing the w, n, e, s tile numbers.
-            tile_west, tile_north = tileWorker.deg2tilenums(options.lat1, options.long1)
-            tile_east, tile_south = tileWorker.deg2tilenums(options.lat2, options.long2)
+            tile_west, tile_north = tileWorker.deg2tilenums(
+                options.lat1, options.long1)
+            tile_east, tile_south = tileWorker.deg2tilenums(
+                options.lat2, options.long2)
 
             number_of_horizontal_tiles = (tile_east - tile_west) + 1
             number_of_vertical_tiles = (tile_south - tile_north) + 1
@@ -2748,9 +2942,11 @@ if __name__ == '__main__':
             config_dict = OrderedDict()
             config_dict['project_folder'] = {str(options.project_folder): 0}
             config_dict['provider'] = {options.tile_server_provider: 1}
-            config_dict['overlay'] = {options.tile_server_provider_layer: 1} if options.tile_server_provider_layer else {"": 0}
+            config_dict['overlay'] = {
+                options.tile_server_provider_layer: 1} if options.tile_server_provider_layer else {"": 0}
             config_dict['tile_format'] = {options.tile_format: 1}
-            config_dict['stitched_tile_format'] = {options.stitched_tile_format: 1}
+            config_dict['stitched_tile_format'] = {
+                options.stitched_tile_format: 1}
             config_dict['zoom'] = {str(zoom): 1}
             config_dict['longtitude1-west'] = {str(options.long1): 1}
             config_dict['longtitude2-east'] = {str(options.long2): 1}
@@ -2761,27 +2957,34 @@ if __name__ == '__main__':
             config_dict['tile_north'] = {str(tile_north): 1}
             config_dict['tile_south'] = {str(tile_south): 1}
             config_dict['total_tiles'] = {str(total_tiles): 1}
-            config_dict['degrees_by_western_most_tile'] = {str(tileWorker.tilenums2deg(tile_west, tile_north)[1]): 1}
-            config_dict['degrees_by_northern_most_tile'] = {str(tileWorker.tilenums2deg(tile_west, tile_north)[0]): 1}
-            config_dict['degrees_by_eastern_most_tile'] = {str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1]): 1}
-            config_dict['degrees_by_southern_most_tile'] = {str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]): 1}
+            config_dict['degrees_by_western_most_tile'] = {
+                str(tileWorker.tilenums2deg(tile_west, tile_north)[1]): 1}
+            config_dict['degrees_by_northern_most_tile'] = {
+                str(tileWorker.tilenums2deg(tile_west, tile_north)[0]): 1}
+            config_dict['degrees_by_eastern_most_tile'] = {
+                str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[1]): 1}
+            config_dict['degrees_by_southern_most_tile'] = {
+                str(tileWorker.tilenums2deg(tile_east + 1, tile_south + 1)[0]): 1}
             config_dict['max_resolution'] = {str(options.max_resolution_px): 1}
 
             # Check if there is an existing config file, and if the necessary config
             # values do not match, warn the user and exit.
-            zoom_conf, main_config_section = read_zoom_config(zoom, config_dict)
+            zoom_conf, main_config_section = read_zoom_config(
+                zoom, config_dict)
 
             # Write the configuration in a conf file
             write_zoom_config(zoom_conf, config_dict, main_config_section)
 
             if not options.skip_downloading and not options.only_calibrate:
-                download_logfile = tileWorker.download_tiles(tile_west, tile_east, tile_north, tile_south, options.retry_failed)
+                download_logfile = tileWorker.download_tiles(
+                    tile_west, tile_east, tile_north, tile_south, options.retry_failed)
             else:
                 LOG.info("Skipping tile downloading as requested.")
 
             # Get the dimensions after we are sure that the files have been downloaded, since we need to know the size
             # of the original tiles in order to calculate this.
-            dimensions = tileWorker._calculate_max_dimensions_per_stitch(tile_west, tile_east, tile_north, tile_south)
+            dimensions = tileWorker._calculate_max_dimensions_per_stitch(
+                tile_west, tile_east, tile_north, tile_south)
 
             config_dict['total_stitched_tiles'] = {'{} ({}x{})'.format(dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by'],
                                                                        dimensions['horizontal_divide_by'],
@@ -2792,16 +2995,19 @@ if __name__ == '__main__':
             write_zoom_config(zoom_conf, config_dict, main_config_section)
 
             if not options.skip_stitching and not options.only_calibrate:
-                tileWorker.stitch_tiles(tile_west, tile_east, tile_north, tile_south)
+                tileWorker.stitch_tiles(
+                    tile_west, tile_east, tile_north, tile_south)
             else:
                 LOG.info("Skipping tile stitching as requested.")
 
             if not options.skip_stitching or options.only_calibrate:
-                tileWorker.calibrate_tiles(tile_west, tile_east, tile_north, tile_south)
+                tileWorker.calibrate_tiles(
+                    tile_west, tile_east, tile_north, tile_south)
 
             # If the user has asked to prepare paper friendly maps, do it now.
             if options.printout:
-                total_tiles = dimensions['horizontal_divide_by'] * dimensions['vertical_divide_by']
+                total_tiles = dimensions['horizontal_divide_by'] * \
+                    dimensions['vertical_divide_by']
 
                 myProgressBarFd = sys.stderr
                 # If log level is set to 1000 (logging is disabled), or DEBUG, then redirect
@@ -2812,18 +3018,23 @@ if __name__ == '__main__':
                 widgets = ['Preparing paper friendly maps ', progressbar.Counter(format='%{}d'.format(len(str(total_tiles)))), '/{}: '.format(total_tiles),
                            progressbar.Percentage(), ' ', progressbar.Bar(marker='#'), ' ', progressbar.RotatingMarker(), ' ', progressbar.ETA()]
 
-                pbar = progressbar.ProgressBar(widgets=widgets, maxval=total_tiles, fd=myProgressBarFd).start()
+                pbar = progressbar.ProgressBar(
+                    widgets=widgets, maxval=total_tiles, fd=myProgressBarFd).start()
 
-                printer_maps_path = os.path.join(options.project_folder, "paper_maps", str(zoom))
+                printer_maps_path = os.path.join(
+                    options.project_folder, "paper_maps", str(zoom))
                 if not os.path.isdir(printer_maps_path):
                     os.makedirs(printer_maps_path)
-                for y in xrange(dimensions['horizontal_divide_by']):
-                    for x in xrange(dimensions['vertical_divide_by']):
-                        inputFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.{}'.format(x, y, options.stitched_tile_format))
-                        outputFile = os.path.join(printer_maps_path, '{}_{}_print.{}'.format(x, y, options.stitched_tile_format))
+                for y in range(dimensions['horizontal_divide_by']):
+                    for x in range(dimensions['vertical_divide_by']):
+                        inputFile = os.path.join(options.project_folder, "stitched_maps", str(
+                            zoom), '{}_{}.{}'.format(x, y, options.stitched_tile_format))
+                        outputFile = os.path.join(printer_maps_path, '{}_{}_print.{}'.format(
+                            x, y, options.stitched_tile_format))
                         if os.path.isfile(inputFile):
                             if not os.path.isfile(outputFile):
-                                mapCalibrationFile = os.path.join(options.project_folder, "stitched_maps", str(zoom), '{}_{}.map'.format(x, y))
+                                mapCalibrationFile = os.path.join(
+                                    options.project_folder, "stitched_maps", str(zoom), '{}_{}.map'.format(x, y))
                                 if os.path.isfile(mapCalibrationFile):
                                     r = quick_regexp()
                                     N = S = W = E = None
@@ -2837,26 +3048,30 @@ if __name__ == '__main__':
                                                 S = float(r.groups[1])
 
                                     if (N is None or S is None or W is None or E is None):
-                                        error_and_exit("Could not read the coordinates from the map file '{}' properly.".format(mapCalibrationFile))
+                                        error_and_exit("Could not read the coordinates from the map file '{}' properly.".format(
+                                            mapCalibrationFile))
 
-                                    prepareStitchForPrint(inputFile, zoom, outputFile, N, S, W, E)
+                                    prepareStitchForPrint(
+                                        inputFile, zoom, outputFile, N, S, W, E)
                                     pbar.currval += 1
                                 else:
                                     error_and_exit("Looked for {}, but I could not locate the specified map calibration file.\n"
                                                    "The map calibration file is needed in order to calculate the scale of the map.".format(mapCalibrationFile))
                             pbar.update(pbar.currval)
                         else:
-                            error_and_exit("File '{}' not found.\nYou need to stitch the necessary files before creating paper friendly maps.".format(inputFile))
+                            error_and_exit(
+                                "File '{}' not found.\nYou need to stitch the necessary files before creating paper friendly maps.".format(inputFile))
 
                 pbar.finish()
 
             if options.prep_for_soft:
                 # Process the tile for the necessary software.
                 if options.prep_for_soft == 'maverick':
-                    tileWorker.prepareMaverickTiles(tile_west, tile_east, tile_north, tile_south)
+                    tileWorker.prepareMaverickTiles(
+                        tile_west, tile_east, tile_north, tile_south)
                 elif options.prep_for_soft == 'osmand':
-                    tileWorker.prepareOsmandTiles(tile_west, tile_east, tile_north, tile_south)
-
+                    tileWorker.prepareOsmandTiles(
+                        tile_west, tile_east, tile_north, tile_south)
 
             properties = """Provider: {}
 Overlay: {}
@@ -2879,28 +3094,30 @@ S_degrees_by_southern_most_tile: {}
 max_resolution: {}
 total_stitched_tiles: {}
 resolution_per_stitch: {}""".format(
-    config_dict['provider'].keys().pop(),
-    config_dict['overlay'].keys().pop(),
-    config_dict['tile_format'].keys().pop(),
-    config_dict['stitched_tile_format'].keys().pop(),
-    config_dict['zoom'].keys().pop(),
-    config_dict['longtitude1-west'].keys().pop(),
-    config_dict['longtitude2-east'].keys().pop(),
-    config_dict['latitude1-north'].keys().pop(),
-    config_dict['latitude2-south'].keys().pop(),
-    config_dict['tile_west'].keys().pop(),
-    config_dict['tile_east'].keys().pop(),
-    config_dict['tile_north'].keys().pop(),
-    config_dict['tile_south'].keys().pop(),
-    config_dict['total_tiles'].keys().pop(),
-    config_dict['degrees_by_western_most_tile'].keys().pop(),
-    config_dict['degrees_by_northern_most_tile'].keys().pop(),
-    config_dict['degrees_by_eastern_most_tile'].keys().pop(),
-    config_dict['degrees_by_southern_most_tile'].keys().pop(),
-    config_dict['max_resolution'].keys().pop(),
-    config_dict['total_stitched_tiles'].keys().pop(),
-    config_dict['resolution_per_stitch'].keys().pop()
-    )
+                list(config_dict['provider'].keys()).pop(),
+                list(config_dict['overlay'].keys()).pop(),
+                list(config_dict['tile_format'].keys()).pop(),
+                list(config_dict['stitched_tile_format'].keys()).pop(),
+                list(config_dict['zoom'].keys()).pop(),
+                list(config_dict['longtitude1-west'].keys()).pop(),
+                list(config_dict['longtitude2-east'].keys()).pop(),
+                list(config_dict['latitude1-north'].keys()).pop(),
+                list(config_dict['latitude2-south'].keys()).pop(),
+                list(config_dict['tile_west'].keys()).pop(),
+                list(config_dict['tile_east'].keys()).pop(),
+                list(config_dict['tile_north'].keys()).pop(),
+                list(config_dict['tile_south'].keys()).pop(),
+                list(config_dict['total_tiles'].keys()).pop(),
+                list(config_dict['degrees_by_western_most_tile'].keys()).pop(),
+                list(
+                    config_dict['degrees_by_northern_most_tile'].keys()).pop(),
+                list(config_dict['degrees_by_eastern_most_tile'].keys()).pop(),
+                list(
+                    config_dict['degrees_by_southern_most_tile'].keys()).pop(),
+                list(config_dict['max_resolution'].keys()).pop(),
+                list(config_dict['total_stitched_tiles'].keys()).pop(),
+                list(config_dict['resolution_per_stitch'].keys()).pop()
+            )
             LOG.info("\n" + properties + 4*"\n")
 
             # To compose two images (satellite with hybrid on top), use the convert command like this:

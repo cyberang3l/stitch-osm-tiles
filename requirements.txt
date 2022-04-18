@@ -1,0 +1,5 @@
+ConfigParser==5.2.0
+cx_Freeze==6.10
+pgmagick==0.7.6
+progressbar33==2.4
+urllib3==1.25.8
