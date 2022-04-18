@@ -183,6 +183,22 @@ def dynGetTileUrl(z, x, y, download_counter):
         ])
     }),
 
+    ('Finn', {
+        'attribution': 'finn',
+        'url': 'https://kart.finn.no/',
+        # Strange, but finn serves jpeg files with the png extension :D
+        'tile_servers': ['https://maptiles.finncdn.no/tileService/1.0.3/{layer}/{z}/{x}/{y}.png'],
+        'extension':'jpg',
+        'zoom_levels':'1-20',
+        'layers': OrderedDict([
+            ('norortho', {
+                'desc': 'Finn aerial map'
+            }),
+            ('norhybrid', {
+                'desc': 'Finn aerial with labels',
+            })
+        ])
+    }),
     # For more maps of Norway take a look here: https://kartkatalog.geonorge.no
     #                                 and here: https://www.norgeskart.no
     ('Statkart', {
