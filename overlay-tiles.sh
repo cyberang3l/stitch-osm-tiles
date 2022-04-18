@@ -98,7 +98,7 @@ usage() {
 	echo -e "                           overlay project must be having the same folder and file"
 	echo -e "                           structure with the base project."
 	echo -e ""
-	echo -e "  -b DESTINATION_PROJECT_PATH, --destination-project-path DESTINATION_PROJECT_PATH"
+	echo -e "  -d DESTINATION_PROJECT_PATH, --destination-project-path DESTINATION_PROJECT_PATH"
 	echo -e "                           Path of the destination project with all the overlayed"
 	echo -e "                           tiles."
 	echo -e ""
@@ -167,9 +167,9 @@ fi
 
 if [[ -d "${DESTINATION_PROJECT_PATH}" ]] ; then
 	echo -e "Destination project path ${DESTINATION_PROJECT_PATH} already exists."
-	echo -n "Do you want to continue and overwrite any existing files within the folder? (Y/n): "
+	echo -n "Do you want to continue and overwrite any existing files within the folder? (y/N): "
 	read answer
-	if [[ ${answer} == 'Y' || ${answer,,} == 'yes' ]] ; then
+	if [[ ${answer,,} == 'y' || ${answer,,} == 'yes' ]] ; then
 		echo -e "Continuing with destination project path ${DESTINATION_PROJECT_PATH}"
 	else
 		echo -e "Aborting."
@@ -190,6 +190,7 @@ divideby=$(echo 1 / $OVERLAY_OPACITY | bc -l)
 # variable will be "1". Otherwise it will be "0".
 is_maverick=$(find ${BASE_PROJECT_PATH} -maxdepth 1 -type d -name maverick | wc -l)
 
+num_threads=$(lscpu | grep -P "^CPU\(s\)" | awk '{print $2}')
 counter=0
 while read folder_in_base ; do
 	echo "Parsing files in folder ${folder_in_base}"
@@ -213,7 +214,14 @@ while read folder_in_base ; do
 			# Combine the base with the overlay and save to destination if the destination
 			# file doesn't exist already, or if it exists but it's zero bytes.
 			if ! ls "${file_in_destination}" &> /dev/null || [[ $(stat --printf="%s" "${file_in_destination}") -eq 0 ]] ; then
-				convert "${file_in_base}" \( "${file_in_overlay}" -alpha set -channel A -evaluate divide ${divideby} \) -composite "${file_in_destination}"
+				convert "${file_in_base}" \( "${file_in_overlay}" -alpha set -channel A -evaluate divide ${divideby} \) -composite "${file_in_destination}" &
+			fi
+
+			# If we have more than num_threads background jobs, wait until they finish before starting more
+			if [[ $(jobs -p | wc -l) -ge ${num_threads} ]]; then
+				for pid in $(jobs -p); do
+					wait "${pid}"
+				done
 			fi
 
 			if [[ ${is_maverick} -eq 1 ]] ; then
@@ -230,4 +238,9 @@ while read folder_in_base ; do
 			#echo "File '$file_in_base' is not an image"
 		fi
 	done < <(find "${folder_in_base}" -maxdepth 1 -type f)
-done < <(find "${BASE_PROJECT_PATH}" -not -path "${BASE_PROJECT_PATH}/maverick*" -mindepth 1 -type d)
+done < <(find "${BASE_PROJECT_PATH}" -mindepth 1 -not -path "${BASE_PROJECT_PATH}/maverick*" -type d)
+
+# Wait for remaining jobs to finish
+for pid in $(jobs -p); do
+	wait "${pid}"
+done

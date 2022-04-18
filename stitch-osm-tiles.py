@@ -212,12 +212,11 @@ def dynGetTileUrl(z, x, y, download_counter):
     # to server them), but often choosing a different server serves the tile immediately.
     # To get the chance to pick a different server for a given tile, apply a randint to the
     # download_counter.
-    # script
-    server = ((download_counter + random.randint(0, 3)) % 4) + 1
+    server = ((download_counter + random.randint(0, 3)) % 3) + 2
     server = "" if server == 1 else server
 
     # Valid servers are:
-    # gis.nve.no
+    # gis.nve.no <- This one is the most terrible. Avoid it!
     # gis2.nve.no
     # gis3.nve.no
     # gis4.nve.no
@@ -423,7 +422,7 @@ def print_(value_to_be_printed, print_indent=0, spaces_per_indent=4, endl="\n"):
     """
 
     if isinstance(value_to_be_printed, dict):
-        for key, value in value_to_be_printed.iteritems():
+        for key, value in value_to_be_printed.items():
             if isinstance(value, dict):
                 print_('{0}{1!r}:'.format(
                     print_indent * spaces_per_indent * ' ', key))
@@ -1684,7 +1683,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         # The log file has to be opened before we start the threads, because the thread worker is using the log file.
         downloadLogFile_path = os.path.join(
             self.project_folder, "zoom-{}-download.log".format(self.zoom))
-        downloadLogFile = open(downloadLogFile_path, 'w')
+        # Open the file for reading and writing
+        downloadLogFile = open(downloadLogFile_path, 'a+')
+        # If the file existed and had some content, ensure it's truncated and we start clean
+        downloadLogFile.truncate(0)
         instantiate_threadpool('ProccessDownloaded-Thread', 1, self._process_download_results_worker,
                                (self._outDownloadQueue, pbar, downloadLogFile))
 
@@ -1745,28 +1747,36 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         pbar.finish()
 
         if retry_failed:
-            filestat = os.fstat(downloadLogFile.fileno())
+            filestat = None
+            with self._downloadLogFileLock:
+                downloadLogFile.flush()
+                filestat = os.fstat(downloadLogFile.fileno())
             retry = 0
             while filestat.st_size > 0:
+                num_failed = 0
+                file_lines = []
+                with self._downloadLogFileLock:
+                    downloadLogFile.seek(0)
+                    file_lines = downloadLogFile.readlines()
+                    num_failed = len(file_lines)
+
                 retry += 1
-                LOG.warn(
-                    "Some tiles were not downloaded properly. Retry attempt {}...".format(retry))
+                LOG.warning(
+                    "{} tiles were not downloaded properly. Retry attempt {}...".format(num_failed, retry))
                 list_of_missing_files = {}
                 with self._downloadLogFileLock:
-                    with open(downloadLogFile_path) as f:
-                        q = quick_regexp()
-                        for line in f:
-                            if q.search(".*ERROR:'(.*)' -> '(.*)'$", line):
-                                url = q.groups[0]
-                                local_path = q.groups[1]
-                                list_of_missing_files[url] = local_path
+                    q = quick_regexp()
+                    for line in file_lines:
+                        if q.search(".*ERROR:'(.*)' -> '(.*)'$", line):
+                            url = q.groups[0]
+                            local_path = q.groups[1]
+                            list_of_missing_files[url] = local_path
 
                     # Erase the contents of the log file at this point.
-                    with open(downloadLogFile_path, 'w'):
-                        pass
+                    downloadLogFile.truncate(0)
 
                 pbar.maxval = pbar.maxval + len(list_of_missing_files)
-                for url, local_path in list_of_missing_files.iteritems():
+                for url, local_path in list_of_missing_files.items():
                     self._addToDownloadInputQueue((url, local_path))
 
                 # Wait for the threads to finish their work by joining the in/out Queues
@@ -1778,7 +1788,8 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     filestat = os.fstat(downloadLogFile.fileno())
 
         # Close the log file since we have finished downloading at this point.
-        downloadLogFile.close()
+        with self._downloadLogFileLock:
+            downloadLogFile.close()
 
     # ----------------------------------------------------------------------
     def _calculate_max_dimensions_per_stitch(self, tile_west, tile_east, tile_north, tile_south):
@@ -2244,12 +2255,12 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         maverick_folder = os.path.join(self.project_folder, 'maverick')
 
         if self.dyn_tile_url:
-            LOG.warn("Offline tiles will be generated, but dynamic URLs are not supported by Maverick\n"
-                     "so you will not be able to download missing files from within the program.")
+            LOG.warning("Offline tiles will be generated, but dynamic URLs are not supported by Maverick\n"
+                        "so you will not be able to download missing files from within the program.")
         else:
             if self.tile_servers is None:
-                LOG.warn("No tile servers have been provided. Offline tiles will be generated for Maverick\n"
-                         "but you will not be able to download missing files from within the program.")
+                LOG.warning("No tile servers have been provided. Offline tiles will be generated for Maverick\n"
+                            "but you will not be able to download missing files from within the program.")
             else:
                 # TODO: The user should be giving the original extension of the tile server, and the max
                 #       zoom as optional arguments to the stitch_osm_tiles class. If we want to create proper
@@ -2278,7 +2289,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     x_path_maverick, str(y)), self.saved_tile_format)
 
                 if not os.path.isfile(y_path):
-                    LOG.warn(
+                    LOG.warning(
                         "File {} is missing. Maverick tile for this file will not be generated.".format(y_path))
                 else:
                     # Only copy the file if it doesn't exist already.
@@ -2313,7 +2324,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                     x_path_osmand, str(y)), self.saved_tile_format)
 
                 if not os.path.isfile(y_path):
-                    LOG.warn(
+                    LOG.warning(
                         "File {} is missing. OsmAnd tile for this file will not be generated.".format(y_path))
                 else:
                     # Only copy the file if it doesn't exist already.
