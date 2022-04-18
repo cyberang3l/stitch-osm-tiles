@@ -24,6 +24,7 @@ import sys
 import shutil
 import re
 import argparse
+import random
 import logging
 import subprocess
 import datetime
@@ -207,7 +208,20 @@ def dynGetTileUrl(z, x, y, download_counter):
         'dyn_tile_url': True,
         'tile_servers': ["""
 def dynGetTileUrl(z, x, y, download_counter):
-    url = 'https://gis3.nve.no/arcgis/rest/services/wmts/KastWMTS/MapServer/export?'
+    # Seems like some of the NVE download servers can't offer all the tiles (or takes too long
+    # to server them), but often choosing a different server serves the tile immediately.
+    # To get the chance to pick a different server for a given tile, apply a randint to the
+    # download_counter.
+    # script
+    server = ((download_counter + random.randint(0, 3)) % 4) + 1
+    server = "" if server == 1 else server
+
+    # Valid servers are:
+    # gis.nve.no
+    # gis2.nve.no
+    # gis3.nve.no
+    # gis4.nve.no
+    url = 'https://gis{}.nve.no/arcgis/rest/services/wmts/KastWMTS/MapServer/export?'.format(server)
     # User mercantile to find the bounding box
     bbox = mercantile.bounds(x, y, z)
     params = {
@@ -217,6 +231,7 @@ def dynGetTileUrl(z, x, y, download_counter):
         "imageSR": 3857,
         "f": "image",
         "size": "256,256",
+        "transparent": "true",
     }
     return url + urllib.parse.urlencode(params)
         """],
@@ -224,7 +239,7 @@ def dynGetTileUrl(z, x, y, download_counter):
         'zoom_levels':'1-18',
         'layers': OrderedDict([
             ('kast', {
-                'desc': 'Avalanche risk maps for Norway'
+                'desc': 'Avalanche risk maps for Norway. Note this is an overlay map.'
             })
         ])
     }),
@@ -1489,9 +1504,10 @@ IWH,Map Image Width/Height,{16},{17}""".format(
         """
         Downloads the content (should be a tile) of the given url.
         Returns a ([graphicsMagickImageObject, imageblob], None) tuple if the file was downloaded succesfully, or a
-        tuple with the error object and a stritg with the type of the error.
+        tuple with the error object and a string with the type of the error.
         """
-        http = urllib3.PoolManager()
+        timeout = urllib3.Timeout(connect=2.0, read=10.0)
+        http = urllib3.PoolManager(timeout=timeout)
         try:
             while True:
                 # The data received from the queue is tuple (url, download_path)
