@@ -42,6 +42,8 @@ import calendar
 import progressbar
 import pgmagick
 from pgmagick import Image as gmImage
+import urllib.parse
+import mercantile
 
 __all__ = [
     'quick_regexp', 'print_', 'is_number',
@@ -196,6 +198,33 @@ def dynGetTileUrl(z, x, y, download_counter):
             }),
             ('norhybrid', {
                 'desc': 'Finn aerial with labels',
+            })
+        ])
+    }),
+    ('Varsom', {
+        'attribution': 'varsom',
+        'url': 'https://www.varsom.no',
+        'dyn_tile_url': True,
+        'tile_servers': ["""
+def dynGetTileUrl(z, x, y, download_counter):
+    url = 'https://gis3.nve.no/arcgis/rest/services/wmts/KastWMTS/MapServer/export?'
+    # User mercantile to find the bounding box
+    bbox = mercantile.bounds(x, y, z)
+    params = {
+        "bbox": "{},{},{},{}".format(bbox.west, bbox.south, bbox.east, bbox.north),
+        "bboxSR": 4326,
+        "bbSR": 4326,
+        "imageSR": 3857,
+        "f": "image",
+        "size": "256,256",
+    }
+    return url + urllib.parse.urlencode(params)
+        """],
+        'extension':'png',
+        'zoom_levels':'1-18',
+        'layers': OrderedDict([
+            ('kast', {
+                'desc': 'Avalanche risk maps for Norway'
             })
         ])
     }),
