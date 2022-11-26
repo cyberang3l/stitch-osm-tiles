@@ -225,7 +225,7 @@ def dynGetTileUrl(z, x, y, download_counter):
     return url + urllib.parse.urlencode(params)
         """],
         'extension':'png',
-        'zoom_levels':'9-12',
+        'zoom_levels':'2-12',
         'layers': OrderedDict([
             ('icao', {
                 'desc': 'Norway Aeronautical chart ICAO 500.000'
