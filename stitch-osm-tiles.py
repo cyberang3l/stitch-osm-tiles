@@ -202,6 +202,36 @@ def dynGetTileUrl(z, x, y, download_counter):
             })
         ])
     }),
+    ('Avinor', {
+        'attribution': 'Avinor',
+        'url': 'https://avinor.maps.arcgis.com/apps/webappviewer/index.html?id=bb768577bbaa4a3d8bee9d467480acb6',
+        'dyn_tile_url': True,
+        'tile_servers': ["""
+def dynGetTileUrl(z, x, y, download_counter):
+    url = 'https://avigis.avinor.no/agsmap/rest/services/ICAO_500000/MapServer/export?'
+    # User mercantile to find the bounding box
+    bbox = mercantile.bounds(x, y, z)
+    params = {
+        "dpi": 96,
+        "transparent": "true",
+        "format": "png32",
+        "layers": "show:3",
+        "bbox": "{},{},{},{}".format(bbox.west, bbox.south, bbox.east, bbox.north),
+        "bboxSR": 4326, # WGS 84: https://developers.arcgis.com/rest/services-reference/enterprise/export-image.htm
+        "imageSR": 3857, # Web Mercator (3857): https://developers.arcgis.com/rest/services-reference/enterprise/export-image.htm
+        "size": "256,256",
+        "f": "image",
+    }
+    return url + urllib.parse.urlencode(params)
+        """],
+        'extension':'png',
+        'zoom_levels':'9-12',
+        'layers': OrderedDict([
+            ('icao', {
+                'desc': 'Norway Aeronautical chart ICAO 500.000'
+            })
+        ])
+    }),
     ('Varsom', {
         'attribution': 'varsom',
         'url': 'https://www.varsom.no',
@@ -557,9 +587,9 @@ def instantiate_threadpool(threadpool_name, threads, worker, args):
 
     for i in range(threads):
         thread_worker = threading.Thread(target=worker, args=(args))
-        thread_worker.setName('{}-{}'.format(threadpool_name, i))
-        LOG.debug("Starting thread worker: {}".format(thread_worker.getName()))
-        thread_worker.setDaemon(True)
+        thread_worker.name = '{}-{}'.format(threadpool_name, i)
+        LOG.debug("Starting thread worker: {}".format(thread_worker.name))
+        thread_worker.daemon = True
         thread_worker.start()
 
 # ----------------------------------------------------------------------
@@ -1513,7 +1543,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 url, download_path = inQueue.get()
 
                 LOG.debug("{} is DOWNLOADING '{}' -> '{}'".format(
-                    threading.currentThread().getName(), url, download_path))
+                    threading.current_thread().name, url, download_path))
 
                 try:
                     resp = http.request("GET", url)
@@ -1559,7 +1589,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 result, url, download_path, errorType = inQueue.get()
 
                 LOG.debug("{} is PROCESSING DOWNLOADED file for url '{}'".format(
-                    threading.currentThread().getName(), url))
+                    threading.current_thread().name, url))
                 time_now = time.strftime("%a %d %b %Y %H:%M:%S")
 
                 # If there was an error, append in the log file.
@@ -1889,7 +1919,7 @@ IWH,Map Image Width/Height,{16},{17}""".format(
                 list_of_files, stitch_filepath, thumb_filepath, x_tiles, y_tiles, x_res, y_res, crop_left, crop_top, progress_bar = inQueue.get()
 
                 LOG.debug("{} is STITCHING '{}'".format(
-                    threading.currentThread().getName(), stitch_filepath))
+                    threading.current_thread().name, stitch_filepath))
 
                 # Prepare the montage command to execute on command line.
                 # Graphicsmagick has a bug (at least in the version that I am using) and when doing the montage
@@ -2909,6 +2939,8 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
     canvas_height = img.rows() + canvas_margin_px * 2
     canvas_geometry = pgmagick.Geometry(canvas_width, canvas_height)
     canvas = pgmagick.Image(canvas_geometry, pgmagick.Color("white"))
+    canvas.subImage(img, pgmagick.GravityType.CenterGravity)
+
     # Add the image in the canvas
     canvas.composite(img, pgmagick.GravityType.CenterGravity)
 

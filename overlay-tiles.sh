@@ -214,7 +214,7 @@ while read folder_in_base ; do
 			# Combine the base with the overlay and save to destination if the destination
 			# file doesn't exist already, or if it exists but it's zero bytes.
 			if ! ls "${file_in_destination}" &> /dev/null || [[ $(stat --printf="%s" "${file_in_destination}") -eq 0 ]] ; then
-				convert "${file_in_base}" \( "${file_in_overlay}" -alpha set -channel A -evaluate divide ${divideby} \) -composite "${file_in_destination}" &
+				convert "${file_in_base}" \( "${file_in_overlay}" -alpha activate -channel A -evaluate divide ${divideby} \) -composite "${file_in_destination}" &
 			fi
 
 			# If we have more than num_threads background jobs, wait until they finish before starting more
