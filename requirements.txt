@@ -1,4 +1,4 @@
 mercantile==1.2.1
 pgmagick==0.7.6
 progressbar33==2.4
-urllib3==1.26.17
+urllib3==1.26.18
