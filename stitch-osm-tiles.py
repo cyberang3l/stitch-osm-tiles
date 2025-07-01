@@ -19,32 +19,31 @@
 # apt-get install python-progressbar python-pgmagick python-wand
 
 from __future__ import print_function
-import os
-import sys
-import shutil
-import re
+
 import argparse
-import random
-import logging
-import subprocess
+import calendar
+import configparser
 import datetime
+import http.client as httplib
+import logging
 import math
-import urllib3
-import socket
 import multiprocessing
+import os
 import queue
+import re
+import shutil
+import socket
+import subprocess
+import sys
 import threading
 import time
-import configparser
-import http.client as httplib
 from collections import OrderedDict
 from shutil import which
-import calendar
-import progressbar
+
 import pgmagick
+import progressbar
+import urllib3
 from pgmagick import Image as gmImage
-import urllib.parse
-import mercantile
 
 __all__ = [
     'quick_regexp', 'print_', 'is_number',
@@ -170,8 +169,8 @@ def dynGetTileUrl(z, x, y, download_counter):
 def dynGetTileUrl(z, x, y, download_counter):
     return "http://map.eniro.com/geowebcache/service/tms1.0.0/{layer}/{}/{}/{}.{ext}".format(z, x, ((1 << z) - 1 - y))
         """],
-        'extension':'png',
-        'zoom_levels':'2-20',
+        'extension': 'png',
+        'zoom_levels': '2-20',
         'layers': OrderedDict([
             ('map', {
                 'desc': 'Eniro Map (NO,SE,FI,DK,PL)'
@@ -191,8 +190,8 @@ def dynGetTileUrl(z, x, y, download_counter):
         'url': 'https://kart.finn.no/',
         # Strange, but finn serves jpeg files with the png extension :D
         'tile_servers': ['https://maptiles.finncdn.no/tileService/1.0.3/{layer}/{z}/{x}/{y}.png'],
-        'extension':'jpg',
-        'zoom_levels':'1-20',
+        'extension': 'jpg',
+        'zoom_levels': '1-20',
         'layers': OrderedDict([
             ('norortho', {
                 'desc': 'Finn aerial map'
@@ -224,8 +223,8 @@ def dynGetTileUrl(z, x, y, download_counter):
     }
     return url + urllib.parse.urlencode(params)
         """],
-        'extension':'png',
-        'zoom_levels':'2-12',
+        'extension': 'png',
+        'zoom_levels': '2-12',
         'layers': OrderedDict([
             ('icao', {
                 'desc': 'Norway Aeronautical chart ICAO 500.000'
@@ -264,8 +263,8 @@ def dynGetTileUrl(z, x, y, download_counter):
     }
     return url + urllib.parse.urlencode(params)
         """],
-        'extension':'png',
-        'zoom_levels':'1-18',
+        'extension': 'png',
+        'zoom_levels': '1-18',
         'layers': OrderedDict([
             ('kast', {
                 'desc': 'Avalanche risk maps for Norway. Note this is an overlay map.'
@@ -339,8 +338,8 @@ def dynGetTileUrl(z, x, y, download_counter):
         'url': 'http://www.topoguide.gr',
         'dyn_tile_url': False,
         'tile_servers': ['http://5.135.161.95/wms/wmsolv3xyz2.php?z={z}&x={x}&y={y}&t={layer}'],
-        'extension':'png',
-        'zoom_levels':'7-18',
+        'extension': 'png',
+        'zoom_levels': '7-18',
         'layers': OrderedDict([
             ('gr', {
                 'name': '15',
@@ -1062,7 +1061,7 @@ def validate_arguments(options):
     # If yes, check if the {z}/{x}/{y} placeholders are present and configure accordingly.
     if options.custom_osm_server:
         r = quick_regexp()
-        if(not r.search('\{z\}', options.custom_osm_server) or not r.search('\{x\}', options.custom_osm_server) or not r.search('\{y\}', options.custom_osm_server)):
+        if (not r.search('\{z\}', options.custom_osm_server) or not r.search('\{x\}', options.custom_osm_server) or not r.search('\{y\}', options.custom_osm_server)):
             if options.custom_osm_server.endswith("/"):
                 options.custom_osm_server = options.custom_osm_server + \
                     "{z}/{x}/{y}.png"
@@ -1347,7 +1346,7 @@ class stitch_osm_tiles(object):
         Return the tile url by replacing the placeholders
         """
         if self.dyn_tile_url:
-            #exec(self.tile_servers[0], locals(), locals())
+            # exec(self.tile_servers[0], locals(), locals())
             exec(self.tile_servers[0], globals())
             url = dynGetTileUrl(self.zoom, x, y, counter)
         else:
@@ -1437,7 +1436,7 @@ class stitch_osm_tiles(object):
 
         deg = abs(degrees)
 
-        return (int(deg), (deg-int(deg))*60, o)
+        return (int(deg), (deg - int(deg)) * 60, o)
 
     # ----------------------------------------------------------------------
 
@@ -1476,9 +1475,9 @@ class stitch_osm_tiles(object):
         # TODO: Change all occurences of '2**(zoom+8)' to 'self._tile_width*(2**8)', because if we export tiles of different size
         #       zoom+8 will not be valid. The +8 part is coming for the fact that 256 = 2**8
         """
-        latitude_mid_of_tile = S + (N - S)/2
+        latitude_mid_of_tile = S + (N - S) / 2
         MMB1 = 40075017 * \
-            math.cos(float(latitude_mid_of_tile) / 180 * math.pi) / 2**(zoom+8)
+            math.cos(float(latitude_mid_of_tile) / 180 * math.pi) / 2**(zoom + 8)
 
         N_OZI = self._convert_degrees_to_OZI_deg(N, 'N')
         S_OZI = self._convert_degrees_to_OZI_deg(S, 'S')
@@ -2763,7 +2762,7 @@ def DrawableScaleRuler(x, y, latitude_mid_of_tile, zoom, rulersize=16, anchor='l
         raise KeyError
 
     horizontalMetersPerPixel = 40075017 * \
-        math.cos(latitude_mid_of_tile / 180.0 * math.pi) / 2**(zoom+8)
+        math.cos(latitude_mid_of_tile / 180.0 * math.pi) / 2**(zoom + 8)
 
     ruler = pgmagick.DrawableList()
     black = pgmagick.Color('black')
@@ -3223,7 +3222,7 @@ resolution_per_stitch: {}""".format(
                 list(config_dict['total_stitched_tiles'].keys()).pop(),
                 list(config_dict['resolution_per_stitch'].keys()).pop()
             )
-            LOG.info("\n" + properties + 4*"\n")
+            LOG.info("\n" + properties + 4 * "\n")
 
             # To compose two images (satellite with hybrid on top), use the convert command like this:
             #   convert sat-img/11/0_0.png hyb-img/11/0_0.png -composite 0_0.png
