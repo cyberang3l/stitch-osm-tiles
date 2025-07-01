@@ -38,7 +38,7 @@ import time
 import configparser
 import http.client as httplib
 from collections import OrderedDict
-import distutils.spawn
+from shutil import which
 import calendar
 import progressbar
 import pgmagick
@@ -653,13 +653,13 @@ class executeCommand(object):
 
         if self._args != None:
             if self.isUtc:
-                self._timeStartedExecution = datetime.datetime.utcnow()
+                self._timeStartedExecution = datetime.datetime.now(tz=datetime.UTC)
             else:
                 self._timeStartedExecution = datetime.datetime.now()
             p = subprocess.Popen(
                 self._args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if self.isUtc:
-                self._timeFinishedExecution = datetime.datetime.utcnow()
+                self._timeFinishedExecution = datetime.datetime.now(tz=datetime.UTC)
             else:
                 self._timeFinishedExecution = datetime.datetime.now()
             self._stdout, self._stderr = p.communicate()
@@ -2990,7 +2990,7 @@ if __name__ == '__main__':
     # Validate the command line arguments
     validate_arguments(options)
 
-    if distutils.spawn.find_executable('gm') is None:
+    if which('gm') is None:
         error_and_exit('The command `gm` (provided by graphicsmagick) could not be found in your $PATH\n'
                        'Please install graphicsmagick before you use this script.')
 
