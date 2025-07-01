@@ -2938,7 +2938,6 @@ def prepareStitchForPrint(mapInputFile, zoom, outputFile, N, S, W, E):
     canvas_height = img.rows() + canvas_margin_px * 2
     canvas_geometry = pgmagick.Geometry(canvas_width, canvas_height)
     canvas = pgmagick.Image(canvas_geometry, pgmagick.Color("white"))
-    canvas.subImage(img, pgmagick.GravityType.CenterGravity)
 
     # Add the image in the canvas
     canvas.composite(img, pgmagick.GravityType.CenterGravity)
